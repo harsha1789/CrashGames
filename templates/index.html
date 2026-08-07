@@ -1,0 +1,1982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melon — Slot Testing Engine</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- Vendored locally (static/xlsx.full.min.js, SheetJS 0.20.3): the CDN copy is unreachable
+       off-VPN / on filtered networks, which killed Excel import with "XLSX is not defined". -->
+  <script src="{{ url_for('static', filename='xlsx.full.min.js') }}"></script>
+</head>
+<body>
+
+<!-- ═══ ANIMATED WARM BACKGROUND ═══ -->
+<div class="bg" aria-hidden="true">
+  <div class="bg-mesh"></div>
+  <div class="bg-glow" id="bgGlow"></div>
+  <div class="bg-noise"></div>
+</div>
+
+<div class="split">
+
+  <!-- ═══ LEFT — HERO STAGE ═══ -->
+  <div class="arena" id="arena">
+
+    <!-- Idle hero: brand · headline · typewriter · kinetic sculpture -->
+    <div class="hero" id="hero">
+      <div class="hero-head">
+        <div class="hero-lockup"><img class="hero-logo" src="{{ url_for('static', filename='logo-white.png') }}" alt="Melon"></div>
+        <div class="hero-tag">Slot Testing Engine</div>
+        <h1 class="hero-headline">Automate.</h1>
+        <div class="hero-type">
+          <span class="typewriter-line" id="tw"></span><span class="tw-caret" id="twCaret"></span>
+        </div>
+        <span class="sr-only">Automate. Evidence you can trust — every spin, verified.</span>
+      </div>
+
+      <div class="particles" id="particles" aria-hidden="true"></div>
+
+      <div class="sculpture" id="sculpture" aria-hidden="true">
+        <div class="slot-frame" id="slotFrame">
+          <div class="reel"><div class="reel-strip up">
+            <div class="sym">🍒</div><div class="sym">🔔</div><div class="sym">🍉</div><div class="sym">💎</div><div class="sym">⭐</div>
+            <div class="sym">🍒</div><div class="sym">🔔</div><div class="sym">🍉</div><div class="sym">💎</div><div class="sym">⭐</div>
+          </div></div>
+          <div class="reel"><div class="reel-strip down">
+            <div class="sym">⭐</div><div class="sym">🍋</div><div class="sym">🍒</div><div class="sym">🍉</div><div class="sym">🔔</div>
+            <div class="sym">⭐</div><div class="sym">🍋</div><div class="sym">🍒</div><div class="sym">🍉</div><div class="sym">🔔</div>
+          </div></div>
+          <div class="reel"><div class="reel-strip up">
+            <div class="sym">💎</div><div class="sym">🍉</div><div class="sym">⭐</div><div class="sym">🍒</div><div class="sym">🍋</div>
+            <div class="sym">💎</div><div class="sym">🍉</div><div class="sym">⭐</div><div class="sym">🍒</div><div class="sym">🍋</div>
+          </div></div>
+          <div class="reel"><div class="reel-strip down">
+            <div class="sym">🔔</div><div class="sym">💎</div><div class="sym">🍋</div><div class="sym">⭐</div><div class="sym">🍉</div>
+            <div class="sym">🔔</div><div class="sym">💎</div><div class="sym">🍋</div><div class="sym">⭐</div><div class="sym">🍉</div>
+          </div></div>
+          <div class="reel"><div class="reel-strip up">
+            <div class="sym">🍉</div><div class="sym">🍒</div><div class="sym">🔔</div><div class="sym">🍋</div><div class="sym">💎</div>
+            <div class="sym">🍉</div><div class="sym">🍒</div><div class="sym">🔔</div><div class="sym">🍋</div><div class="sym">💎</div>
+          </div></div>
+          <div class="focus-lens"></div>
+        </div>
+      </div>
+
+      <div class="hero-features">
+        <div class="feat"><div class="feat-t">Plays by sight</div><div class="feat-d">Reads the reels and clicks like a person — no selectors, no scripts.</div></div>
+        <div class="feat"><div class="feat-t">Proof, not vibes</div><div class="feat-d">A pass only counts when the live network agrees.</div></div>
+        <div class="feat"><div class="feat-t">Clears the catalog</div><div class="feat-d">Point it at a spreadsheet and walk away.</div></div>
+      </div>
+    </div>
+
+    <!-- Live terminal (revealed on launch) -->
+    <div class="terminal" id="terminal">
+      <header class="term-head">
+        <div class="term-status"><span class="dot" id="termDot"></span> <span id="termStatus">Idle</span></div>
+        <div class="term-tools">
+          <input class="term-search" id="termSearch" type="text" placeholder="Filter…" aria-label="Filter log">
+          <button class="term-btn" id="termSearchBtn" title="Search log" aria-label="Search log">🔍</button>
+          <button class="term-btn on" id="termAutoBtn" title="Auto-scroll" aria-label="Toggle auto-scroll">Auto</button>
+          <button class="term-btn" id="termCopyBtn" title="Copy log" aria-label="Copy log">Copy</button>
+          <button class="term-btn" id="termClearBtn" title="Clear log" aria-label="Clear log">Clear</button>
+        </div>
+      </header>
+      <div class="arena-live-log" id="arenaLog"></div>
+      <button class="term-jump" id="termJump">↓ Jump to latest</button>
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT — CONTROL CENTER ═══ -->
+  <div class="controls-panel">
+
+    <div class="ctx-bar">
+      <span class="ctx-brand"><img class="ctx-logo" src="{{ url_for('static', filename='logo-mark.png') }}" alt="Melon"></span>
+      <span class="ctx-scope" id="ctxScope">Betway · ZA · PROD</span>
+    </div>
+
+    <div class="ctrl-scroll">
+
+      <!-- TARGET -->
+      <section class="sec">
+        <div class="eyebrow">Target</div>
+        <div class="target-card">
+          <div class="target-row">
+            <div class="target-label">Platform</div>
+            <div class="platform-toggle brand-toggle" id="platformToggle" role="radiogroup" aria-label="Platform">
+              <button class="platform-opt active" data-p="betway" role="radio" aria-checked="true">Betway</button>
+              <button class="platform-opt" data-p="jackpotcity" role="radio" aria-checked="false">JackpotCity</button>
+            </div>
+          </div>
+          <div class="target-row">
+            <div class="target-label">Region <span class="region-active" id="regionActive" style="display:none;"></span></div>
+            <select id="regionSelect" class="premium-select" aria-label="Region"></select>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACCOUNTS -->
+      <section class="sec">
+        <div class="sec-head">
+          <div class="eyebrow">Accounts</div>
+          <button class="add-acc-toggle" id="toggleAddForm" aria-expanded="false">+ Add account</button>
+        </div>
+
+        <div class="add-cred-box" id="addCredBox">
+          <div class="add-cred-context" id="saveContext"></div>
+          <div class="add-cred-row">
+            <input class="add-cred-input" id="newLabel" type="text" placeholder="Account name (e.g. VIP Betway)" aria-label="Account name">
+          </div>
+          <div class="add-cred-row">
+            <input class="add-cred-input" id="newUsername" type="text" placeholder="Username" aria-label="Username">
+            <input class="add-cred-input" id="newPassword" type="password" placeholder="Password" aria-label="Password">
+          </div>
+          <button class="add-cred-save" id="saveCredBtn">Save Account</button>
+        </div>
+
+        <div class="account-list" id="accountList" role="radiogroup" aria-label="Test account"></div>
+      </section>
+
+      <input id="inputUser" type="hidden" value="">
+      <input id="inputPass" type="hidden" value="">
+
+      <!-- ═══ TEST TYPE ═══ Slot vs Crash — the two verticals need different flows (Auto Sweep
+           + the bottom launch-dock are slot-only; crash has its own inline Run buttons), so this
+           toggle shows/hides whole sections below rather than mixing both into one screen. -->
+      <section class="sec">
+        <div class="eyebrow">Test type</div>
+        <div class="platform-toggle brand-toggle" id="modeToggle" role="radiogroup" aria-label="Test type">
+          <button class="platform-opt active" data-mode="slot" role="radio" aria-checked="true">Slot</button>
+          <button class="platform-opt" data-mode="crash" role="radio" aria-checked="false">Crash</button>
+        </div>
+      </section>
+
+      <!-- ═══ AUTO SWEEP (DSC) ═══ The one true DSC: test one game per provider on the site,
+           weekly rotation, recorded to the prod database. -->
+      <section class="sec sweep-sec" id="autoSweepSection">
+        <div class="eyebrow">Auto Sweep · DSC</div>
+        <div class="sweep-card">
+          <div class="sweep-blurb">Tests <b>one fresh game per provider</b> — providers repeat daily, <b>games rotate</b> (anything tested in the last 7 days is skipped, so each provider yields a new game). Each verified spin is recorded to the prod database.</div>
+
+          <!-- SCOPE: how wide does this run go -->
+          <div class="sweep-field">
+            <div class="sweep-lbl">Scope</div>
+            <div class="scope-toggle" id="scopeToggle" role="radiogroup" aria-label="DSC scope">
+              <button class="scope-opt active" data-scope="region" role="radio" aria-checked="true" title="Only the brand + region selected at the top">This region only</button>
+              <button class="scope-opt" data-scope="betway" role="radio" aria-checked="false" title="Every Betway region that has an account">All Betway regions</button>
+              <button class="scope-opt" data-scope="jackpotcity" role="radio" aria-checked="false" title="Every JackpotCity region that has an account">All JackpotCity regions</button>
+              <button class="scope-opt" data-scope="all" role="radio" aria-checked="false" title="Every region of every product">Everything</button>
+            </div>
+          </div>
+
+          <!-- TARGETS: the (brand,region)s this scope covers, each mapped to a saved account.
+               One browser per checked row; games sharded across same-region accounts. -->
+          <div class="sweep-field">
+            <div class="sweep-lbl">Regions in this run <span class="sweep-hint" id="targetHint"></span></div>
+            <div class="sweep-targets" id="sweepTargets"></div>
+          </div>
+
+          <div class="sweep-opts">
+            <label class="sweep-num" title="Most browsers open at once. The rest queue and start as each finishes.">Parallel browsers <input type="number" id="sweepParallel" min="1" max="8" value="4" aria-label="Parallel browsers"></label>
+            <label class="sweep-num" title="Cap games PER region (default: every provider).">Limit / region <input type="number" id="sweepLimit" min="1" placeholder="all" aria-label="Max games per region"></label>
+            <label class="sweep-num sweep-prov">Providers <input type="text" id="sweepProviders" placeholder="all (e.g. Red-Tiger,Habanero)" aria-label="Provider filter"></label>
+          </div>
+          <div class="sweep-toggles">
+            <label class="chk" title="Run browsers invisibly in the background."><input type="checkbox" id="sweepHeadless"><span class="chk-box"></span><span class="chk-lbl">Headless</span></label>
+            <label class="chk" title="Run WITHOUT writing to the prod database — the games keep their weekly slot and nothing is logged."><input type="checkbox" id="sweepNoRecord"><span class="chk-box"></span><span class="chk-lbl">Don't record this run</span></label>
+          </div>
+          <button class="sweep-plan-btn" id="sweepPlanBtn" type="button" title="See exactly which games each region would test — no spins, no money">Preview plan</button>
+          <div class="sweep-plan" id="sweepPlan"></div>
+        </div>
+        <div class="checks-note"><a href="/dsc-report/latest" style="color:inherit;text-decoration:underline">Download DSC report</a> · <a href="#" onclick="openTlogsPicker();return false" style="color:inherit;text-decoration:underline">Validate transactions</a></div>
+      </section>
+
+      <!-- ═══ CRASH SWEEP ═══ Discover every crash title the region's catalog offers in ONE
+           call (provider_sweep.list_crash_games reads the Categories API's curated
+           'crashgames' bucket — no per-provider walk needed), pick which to run, then batch
+           them through crash_auto.py --dry-run. Runs ONE AT A TIME (see /launch-crash-sweep
+           docstring) — concurrent logins on the SAME account risk a real 'session held by
+           another tab' disconnect, so there's no parallel-browsers knob here the way Auto
+           Sweep has for slots (different accounts). Sits above the single-game Live card
+           since the natural flow is discover-first: each row's "Run LIVE" button carries
+           that game straight into the card below for an actual real-money test. -->
+      <section class="sec" id="crashSweepSection" style="display:none">
+        <div class="eyebrow">Crash sweep · dry-run</div>
+        <div class="sweep-card">
+          <div class="sweep-blurb">Discover every crash title in the selected account's region, pick which to run, and batch them through a SAFE dry-run — <b>no wagers</b>. Runs one at a time under the selected account (concurrent logins on one account can trigger a disconnect). Each row also has a <b>▶ Live</b> button to test that one specific game for real, below.</div>
+          <button class="sweep-plan-btn" id="crashSweepDiscoverBtn" type="button" title="List every crash title for this region — no spins, no money">Discover crash games</button>
+          <div class="sweep-plan" id="crashSweepPlan"></div>
+          <label class="chk" id="crashSweepHeadlessWrap" style="display:none"><input type="checkbox" id="crashSweepHeadless"><span class="chk-box"></span><span class="chk-lbl">Headless</span></label>
+          <label class="chk" id="crashSweepLiveWrap" style="display:none" title="Places a REAL bet on EVERY selected game, one after another — off by default."><input type="checkbox" id="crashSweepLiveToggle"><span class="chk-box"></span><span class="chk-lbl">Live mode (places REAL bets on every selected game)</span></label>
+          <div id="crashSweepLiveFields" style="display:none">
+            <div class="sweep-opts">
+              <label class="sweep-num" title="Stake per bet, capped by the server's MAX_STAKE, applied to EVERY selected game.">Stake per game <input type="number" id="crashSweepLiveStake" min="0" step="0.01" placeholder="1.00" aria-label="Live stake amount per game"></label>
+              <label class="sweep-num" title="Auto cash-out target multiplier, e.g. 1.5 for 1.5x.">Auto cash-out target <input type="number" id="crashSweepLiveTarget" min="1" step="0.1" placeholder="1.5" aria-label="Auto cash-out target multiplier"></label>
+            </div>
+            <div class="sweep-hint" id="crashSweepExposureHint" style="margin:4px 0 8px"></div>
+            <label class="chk" title="Required before a live sweep will start."><input type="checkbox" id="crashSweepLiveConfirm"><span class="chk-box"></span><span class="chk-lbl">I understand this places real money bets on every selected game</span></label>
+          </div>
+          <button class="sweep-plan-btn" id="crashSweepRunBtn" type="button" style="display:none">Run selected (dry-run)</button>
+        </div>
+        <div class="checks-note"><a href="/api/crash-report/latest" style="color:inherit;text-decoration:underline">Download crash report</a></div>
+      </section>
+
+      <!-- ═══ CRASH GAME ═══ Single-game entry for the crash vertical (FlyX Party / Aviator-
+           style). LIVE ONLY — every run places a real wager. Reached either by typing a name/
+           URL directly, or via a "▶ Live" button on a Crash Sweep row above. -->
+      <section class="sec" id="crashSection" style="display:none">
+        <div class="eyebrow">Crash game · LIVE</div>
+        <div class="sweep-card">
+          <div class="sweep-blurb">Two ways to test a crash game: <b>by name</b> (uses the selected account + region and resolves the launch URL at runtime — just like slots), or by pasting a <b>direct launch URL</b>. <b>LIVE ONLY — every run places a real wager</b>, capped by the server's MAX_STAKE. For a safe, no-money observation pass instead, use Crash Sweep above (dry-run only) or the CLI's <code>--dry-run</code> flag.</div>
+          <div class="sweep-field">
+            <div class="sweep-lbl">Game name</div>
+            <input class="field-input" id="crashGameInput" type="text" autocomplete="off" role="combobox"
+                   aria-expanded="false" aria-controls="crashGameSuggest" aria-autocomplete="list"
+                   placeholder="e.g. Aviator, Red Baron, FlyX Party" aria-label="Crash game name">
+            <div class="game-suggest" id="crashGameSuggest" role="listbox"></div>
+          </div>
+          <div class="sweep-field">
+            <div class="sweep-lbl">…or a direct launch URL</div>
+            <input class="field-input" id="crashUrlInput" type="text" placeholder="https://…?token=…" aria-label="Crash game launch URL">
+          </div>
+          <div class="sweep-opts">
+            <label class="sweep-num" title="Stake per bet, capped by the server's MAX_STAKE.">Stake <input type="number" id="crashLiveStake" min="0" step="0.01" placeholder="1.00" aria-label="Live stake amount"></label>
+            <label class="sweep-num" title="Auto cash-out target multiplier, e.g. 1.5 for 1.5x.">Auto cash-out target <input type="number" id="crashLiveTarget" min="1" step="0.1" placeholder="1.5" aria-label="Auto cash-out target multiplier"></label>
+          </div>
+          <label class="chk" title="Required before a run will start."><input type="checkbox" id="crashLiveConfirm"><span class="chk-box"></span><span class="chk-lbl">I understand this places real money bets</span></label>
+          <button class="sweep-plan-btn live-danger" id="crashRunBtn" type="button">Run crash test (LIVE — real bets)</button>
+        </div>
+      </section>
+
+      <!-- GAME (hidden — DSC-only build presents Auto Sweep instead; kept in DOM so the
+           single-game/import plumbing stays intact and error-free) -->
+      <section class="sec" id="gameSection" style="display:none">
+        <div class="eyebrow">Game</div>
+        <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" style="display:none">
+        <div class="field game-search-field">
+          <div class="smart-input-container" id="smartInputZone">
+            <span class="search-lead" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            </span>
+            <input class="field-input" id="gameInput" type="text" autocomplete="off" role="combobox"
+                   aria-expanded="false" aria-controls="gameSuggest" aria-autocomplete="list"
+                   placeholder="Search games…">
+            <div class="smart-input-icon" role="button" tabindex="0" title="Import .xlsx matrix" aria-label="Import spreadsheet">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 8 5-5 5 5"></path><path d="M5 21h14"></path></svg>
+            </div>
+          </div>
+          <div class="game-suggest" id="gameSuggest" role="listbox"></div>
+        </div>
+        <select class="game-select" id="gameSelect" style="display:none" aria-label="Loaded games">
+          <option value="">Pick a game…</option>
+        </select>
+        <div class="game-count" id="gameCount"></div>
+
+        <!-- Batch mode: importing a sheet arms a run of EVERY game in it. Workers = one
+             parallel browser per checked account; the sheet is split round-robin. -->
+        <div class="batch-panel" id="batchPanel" style="display:none">
+          <div class="batch-head">
+            <span class="batch-title">Batch run · <b id="batchCount">0</b> games</span>
+            <button type="button" class="batch-exit" id="batchExit" title="Switch back to single-game mode">✕ single game</button>
+          </div>
+          <div class="batch-sub">Every game in the sheet runs — no selection needed. Results fill one Excel report.</div>
+          <div class="batch-workers-label">Worker accounts <span class="batch-hint">each checked account gets its own browser — games split round-robin</span></div>
+          <div class="batch-workers" id="batchWorkers"></div>
+          <div class="batch-distrib" id="batchDistrib"></div>
+        </div>
+      </section>
+
+      <!-- CHECKS (hidden — DSC-only build: DSC is the single mode; capability toggles retired.
+           Kept in DOM so the launch/batch JS that reads #checksGrid stays error-free) -->
+      <section class="sec" id="checksSection" style="display:none">
+        <div class="sec-head">
+          <div class="eyebrow">Checks</div>
+          <button type="button" class="checks-toggle" id="checksToggle">all</button>
+        </div>
+        <div class="checks-grid" id="checksGrid">
+          <label class="chk"><input type="checkbox" data-cap="core"><span class="chk-box"></span><span class="chk-lbl">Core spin</span></label>
+          <label class="chk"><input type="checkbox" data-cap="autoplay"><span class="chk-box"></span><span class="chk-lbl">Autoplay</span></label>
+          <label class="chk"><input type="checkbox" data-cap="bet"><span class="chk-box"></span><span class="chk-lbl">Bet &amp; restore</span></label>
+          <label class="chk"><input type="checkbox" data-cap="menu"><span class="chk-box"></span><span class="chk-lbl">Menu</span></label>
+          <label class="chk"><input type="checkbox" data-cap="paytable"><span class="chk-box"></span><span class="chk-lbl">Paytable</span></label>
+          <label class="chk" title="Daily Sanity Check: launch → minimum bet → one verified spin → row in the daily Excel report."><input type="checkbox" data-cap="dsc" checked><span class="chk-box"></span><span class="chk-lbl">DSC (fast)</span></label>
+          <label class="chk" title="Run browser invisibly in the background."><input type="checkbox" id="headlessToggle"><span class="chk-box"></span><span class="chk-lbl">Headless Mode</span></label>
+        </div>
+        <div class="checks-note">Launch and control detection always run. Any check can be toggled. DSC overrides the rest: min-bet spin + daily Excel row only. Importing a sheet arms a batch run of every game in it. <a href="/dsc-report/latest" style="color:inherit;text-decoration:underline">Download DSC report</a> · <a href="#" onclick="openTlogsPicker();return false" style="color:inherit;text-decoration:underline">Validate transactions</a></div>
+      </section>
+
+      <!-- RECENT RUNS: server-backed history. The live report overlay is in-page state
+           and dies on refresh — this panel reopens any past run's results on demand. -->
+      <section class="sec">
+        <div class="sec-head">
+          <div class="eyebrow">Recent runs</div>
+          <button class="add-acc-toggle" id="runsRefresh" title="Refresh list">↻ refresh</button>
+        </div>
+        <div class="runs-list" id="runsList"><div class="acc-empty">No runs yet.</div></div>
+      </section>
+
+      <!-- ═══ TEST HISTORY ═══ prod-DB audit: what's been tested + when (drives rotation) -->
+      <section class="sec">
+        <div class="sec-head">
+          <div class="eyebrow">Test history</div>
+          <button class="add-acc-toggle" id="historyRefresh" title="Refresh from the prod database">↻ refresh</button>
+        </div>
+        <div class="history-list" id="historyList"><div class="acc-empty">No tests recorded yet.</div></div>
+      </section>
+
+    </div><!-- /ctrl-scroll -->
+
+    <div class="launch-dock">
+      <button class="launch-btn" id="launchBtn" aria-live="polite">
+        <span class="lb-prog"></span><span class="lb-fill"></span><span class="lb-label" id="lbLabel">Start Auto Sweep</span>
+      </button>
+      <div class="panel-footer">🍈 Melon · Slot Testing Engine · v2</div>
+    </div>
+  </div>
+</div>
+
+<!-- Full-window report overlay. MUST be a top-level <body> child (not inside .arena): .arena's
+     fadeIn animation makes it a persistent stacking context, so a report nested inside it — even at
+     z-index:1000 — would paint UNDER the z-index:50 .controls-panel. As a body child it sits in the
+     root stacking context and reliably covers the whole window. -->
+<div class="arena-report" id="report"></div>
+
+<!-- toast stack -->
+<div id="toastStack" style="position:fixed;right:20px;bottom:20px;z-index:9998;display:flex;flex-direction:column;gap:10px;"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let isRunning=false, eventSource=null;
+let platform='betway', region='ZA', selectedUser=null, env='PROD';
+let batchMode=false, loadedFile=null, batchTotal=0, batchStarted=0, batchRowsDone=0;
+const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const NOHOVER = window.matchMedia('(hover: none)').matches;
+
+/* ═══ BRAND / REGION CONFIG (unchanged) ═══ */
+const REGIONS = {
+  betway:      ['ZA','GH','NG','TZ','MW','MZ','BW','ZM'],
+  jackpotcity: ['ZA','GH','TZ','MW']
+};
+const REGION_META = {
+  ZA:{name:'South Africa'}, GH:{name:'Ghana'}, NG:{name:'Nigeria'}, TZ:{name:'Tanzania'},
+  MW:{name:'Malawi'}, MZ:{name:'Mozambique'}, BW:{name:'Botswana'}, ZM:{name:'Zambia'}
+};
+const brandLabel = b => b==='jackpotcity' ? 'JackpotCity' : 'Betway';
+
+/* ═══ TOAST (replaces alert) ═══ */
+function toast(msg, kind='info'){
+  const t=document.createElement('div');
+  const c = kind==='error'?'var(--accent)':(kind==='success'?'var(--green)':'var(--violet)');
+  t.style.cssText=`background:var(--surface);border:1px solid var(--border);border-left:3px solid ${c};border-radius:12px;padding:12px 16px;font:600 13px var(--display);color:var(--ink);box-shadow:var(--e3);max-width:340px;opacity:0;transform:translateY(8px);transition:opacity .25s var(--settle),transform .25s var(--settle);`;
+  t.textContent=msg; $('toastStack').appendChild(t);
+  requestAnimationFrame(()=>{ t.style.opacity='1'; t.style.transform='none'; });
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateY(8px)'; setTimeout(()=>t.remove(),260); }, kind==='error'?5200:3400);
+}
+
+/* ═══ TYPEWRITER (natural cadence) ═══ */
+const phrases=["Test every spin gracefully.","Zero manual effort.","Evidence you can trust.","Every spin. Verified.","Precision without repetition."];
+(function typewriter(){
+  const tw=$('tw'), caret=$('twCaret');
+  if(RM){ tw.textContent='Evidence you can trust.'; return; }
+  let pi=0, ci=0, del=false;
+  const step=()=>{
+    const p=phrases[pi];
+    if(!del){
+      caret.classList.add('typing');
+      tw.textContent=p.substring(0,++ci);
+      if(ci===p.length){ caret.classList.remove('typing'); setTimeout(()=>{del=true;step();},2200); return; }
+      const last=p[ci-1];
+      setTimeout(step, /[.,!?]/.test(last)?260:(45+Math.random()*50));
+    } else {
+      caret.classList.add('typing');
+      tw.textContent=p.substring(0,--ci);
+      if(ci===0){ del=false; pi=(pi+1)%phrases.length; caret.classList.remove('typing'); setTimeout(step,350); return; }
+      setTimeout(step, 28+Math.random()*12);
+    }
+  };
+  setTimeout(step,600);
+})();
+
+/* ═══ PARTICLES ═══ */
+(function particles(){
+  if(RM || NOHOVER) return;
+  const host=$('particles'); if(!host) return;
+  const n=14;
+  for(let i=0;i<n;i++){
+    const d=document.createElement('div'); d.className='particle';
+    const size=2+Math.random()*2.5;
+    d.style.width=d.style.height=size+'px';
+    d.style.left=(Math.random()*100)+'%';
+    d.style.setProperty('--drift',((Math.random()*40)-20)+'px');
+    d.style.animationDuration=(20+Math.random()*20)+'s';
+    d.style.animationDelay=(-Math.random()*30)+'s';
+    d.style.opacity=(0.1+Math.random()*0.2).toFixed(2);
+    host.appendChild(d);
+  }
+})();
+
+/* ═══ MOUSE PARALLAX ═══ */
+(function parallax(){
+  if(RM || NOHOVER) return;
+  const arena=$('arena'), scu=$('sculpture'), glow=$('bgGlow'), parts=$('particles'), head=document.querySelector('.hero-headline');
+  let tx=0,ty=0,cx=0,cy=0,raf=null;
+  arena.addEventListener('pointermove',e=>{
+    const r=arena.getBoundingClientRect();
+    tx=((e.clientX-r.left)/r.width-0.5)*2;
+    ty=((e.clientY-r.top)/r.height-0.5)*2;
+    if(!raf) raf=requestAnimationFrame(loop);
+  });
+  arena.addEventListener('pointerleave',()=>{ tx=0;ty=0; if(!raf) raf=requestAnimationFrame(loop); });
+  function loop(){
+    cx+=(tx-cx)*0.08; cy+=(ty-cy)*0.08;
+    if(glow)  glow.style.transform =`translate(-50%,-50%) translate(${cx*10}px,${cy*10}px)`;
+    if(scu)   scu.style.transform  =`translate(${cx*6}px,${cy*6}px) rotateX(${-cy*1.2}deg) rotateY(${cx*1.2}deg)`;
+    if(parts) parts.style.transform=`translate(${cx*16}px,${cy*16}px)`;
+    if(head)  head.style.transform =`translate(${cx*4}px,${cy*4}px)`;
+    if(Math.abs(tx-cx)>0.001||Math.abs(ty-cy)>0.001){ raf=requestAnimationFrame(loop); } else { raf=null; }
+  }
+})();
+
+/* ═══ SCOPE CONTEXT ═══ */
+function updateCtx(){ $('ctxScope').textContent=`${brandLabel(platform)} · ${region} · ${env}`; }
+
+/* ═══ PLATFORM TOGGLE ═══ */
+document.querySelectorAll('#platformToggle .platform-opt').forEach(b=>{
+  b.addEventListener('click',()=>{
+    platform=b.dataset.p;
+    document.querySelectorAll('#platformToggle .platform-opt').forEach(x=>{const on=x===b;x.classList.toggle('active',on);x.setAttribute('aria-checked',on);});
+    buildRegions();
+    selectedUser=null; $('inputUser').value=''; $('inputPass').value='';
+    updateCtx(); loadAccounts();
+  });
+});
+
+/* ═══ TEST-TYPE TOGGLE (Slot / Crash) ═══ Auto Sweep + the bottom launch-dock are slot-only
+   (launchBtn's handler always calls startSweep() — see its listener below); crash has its own
+   inline Run buttons in its own cards, so the dock would just be a dead, confusing button while
+   viewing crash. Switching modes shows/hides whole sections rather than mixing both on screen. */
+window.testMode='slot';
+function setTestMode(mode){
+  window.testMode=mode;
+  const isCrash = mode==='crash';
+  $('autoSweepSection').style.display = isCrash?'none':'';
+  $('crashSection').style.display = isCrash?'':'none';
+  $('crashSweepSection').style.display = isCrash?'':'none';
+  // The dock's Stop control is still needed while a crash run is active (startCrash/
+  // runCrashSweep re-show it) — only hide it here when idle, so switching to Crash mode
+  // doesn't hide the one way to cancel a run already in flight.
+  if(!isRunning) document.querySelector('.launch-dock').style.display = isCrash?'none':'';
+}
+document.querySelectorAll('#modeToggle .platform-opt').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#modeToggle .platform-opt').forEach(x=>{const on=x===b;x.classList.toggle('active',on);x.setAttribute('aria-checked',on);});
+    setTestMode(b.dataset.mode);
+  });
+});
+
+/* Environment fixed to PROD for now (toggle removed; env kept for backend scope) */
+
+function buildRegions(){
+  const select=$('regionSelect'); select.innerHTML='';
+  const list=REGIONS[platform]||[];
+  if(!list.includes(region)) region=list[0];
+  list.forEach(rc=>{
+    const m=REGION_META[rc]||{name:rc};
+    const opt=document.createElement('option');
+    opt.value=rc; opt.textContent=`${rc} — ${m.name}`;
+    if(rc===region) opt.selected=true;
+    select.appendChild(opt);
+  });
+  updateRegionLabel(); updateSaveContext();
+}
+$('regionSelect').addEventListener('change', (e) => {
+  region=e.target.value;
+  selectedUser=null; $('inputUser').value=''; $('inputPass').value='';
+  updateRegionLabel(); updateSaveContext(); updateCtx(); loadAccounts();
+});
+function updateRegionLabel(){ const m=REGION_META[region]||{name:region}; $('regionActive').textContent='· '+m.name; }
+function updateSaveContext(){ const m=REGION_META[region]||{name:region}; $('saveContext').innerHTML=`Saving to <strong>${brandLabel(platform)}</strong> ${region} ${m.name} (${env})`; }
+
+/* ═══ ACCOUNTS ═══ */
+async function loadAccounts(){
+  const res=await fetch('/api/accounts');
+  const allAccs=await res.json();
+  const accs=allAccs.filter(a=>(a.brand||'betway')===platform && (a.region||'ZA')===region && (a.env||'PROD')===env);
+  const list=$('accountList'); list.innerHTML='';
+  if(!accs.length){
+    list.innerHTML=`<div class="acc-empty">No accounts for <b>${brandLabel(platform)} ${region}</b> (${env}) yet.<br>Add one to get started.</div>`;
+    if(batchMode) renderBatchWorkers();
+    renderTargets(); loadHistory();
+    return;
+  }
+  accs.forEach(a=>{
+    const rc=a.region||'ZA';
+    const row=document.createElement('div');
+    row.className='acc-row'+(a.username===selectedUser?' active':'');
+    row.setAttribute('role','radio'); row.setAttribute('tabindex','0');
+    row.setAttribute('aria-checked', a.username===selectedUser?'true':'false');
+    const ini=(a.label||'A').substring(0,2).toUpperCase();
+    row.innerHTML=`<div class="acc-avatar">${ini}</div>
+      <div class="acc-info">
+        <div class="acc-name">${esc(a.label)} <span class="acc-region" title="${(REGION_META[rc]||{}).name||''}">${rc}</span></div>
+        <div class="acc-user">${esc(a.username)}</div>
+      </div>
+      <button class="acc-del" data-user="${esc(a.username)}" aria-label="Delete ${esc(a.label)}">✕</button>`;
+    const pick=()=>{
+      selectedUser=a.username;
+      $('inputUser').value=a.username; $('inputPass').value=a.password;
+      document.querySelectorAll('.acc-row').forEach(r=>{r.classList.remove('active');r.setAttribute('aria-checked','false');});
+      row.classList.add('active'); row.setAttribute('aria-checked','true');
+      if (batchMode) updateLaunchLabel();
+    };
+    row.addEventListener('click',(e)=>{ if(e.target.closest('.acc-del'))return; pick(); });
+    row.addEventListener('keydown',(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); pick(); } });
+    const del=row.querySelector('.acc-del');
+    del.addEventListener('click',async(e)=>{
+      e.stopPropagation();
+      if(!del.classList.contains('arm')){ del.classList.add('arm'); del.textContent='Sure?'; setTimeout(()=>{del.classList.remove('arm');del.textContent='✕';},3000); return; }
+      await fetch(`/api/accounts/${encodeURIComponent(a.username)}?brand=${a.brand||'betway'}&region=${a.region||'ZA'}&env=${a.env||'PROD'}`,{method:'DELETE'});
+      if(selectedUser===a.username){selectedUser=null;$('inputUser').value='';$('inputPass').value='';}
+      toast('Account removed','success'); loadAccounts();
+    });
+    list.appendChild(row);
+  });
+  if(batchMode) renderBatchWorkers();
+  renderTargets(); loadHistory();   // DSC-only: keep the sweep targets + history in sync
+}
+
+$('toggleAddForm').addEventListener('click', () => {
+  const open=$('addCredBox').classList.toggle('open');
+  $('toggleAddForm').setAttribute('aria-expanded',open);
+  updateSaveContext();
+  if(open) setTimeout(()=>$('newLabel').focus(),50);
+});
+
+$('saveCredBtn').addEventListener('click', async()=>{
+  const label=$('newLabel').value.trim(), u=$('newUsername').value.trim(), p=$('newPassword').value;
+  if (!u||!p||!label) { toast('Fill in name, username and password.','error'); return; }
+  await fetch('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,username:u,password:p,brand:platform,region,env:env})});
+  $('newLabel').value=''; $('newUsername').value=''; $('newPassword').value='';
+  $('addCredBox').classList.remove('open'); $('toggleAddForm').setAttribute('aria-expanded','false');
+  toast('Account saved','success'); loadAccounts();
+});
+$('addCredBox').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ e.preventDefault(); $('saveCredBtn').click(); }
+  if(e.key==='Escape'){ $('addCredBox').classList.remove('open'); $('toggleAddForm').setAttribute('aria-expanded','false'); }
+});
+
+/* ═══ LIVE LOG / TERMINAL ═══ */
+let autoScroll=true;
+function nearBottom(){ const el=$('arenaLog'); return el.scrollHeight-el.scrollTop-el.clientHeight < 40; }
+function logClass(t){
+  if(/FAIL|❌|error/i.test(t)) return 'fail';
+  if(/PASS|✅|Report row written/i.test(t)) return 'pass';
+  if(/\[SETUP\]|\[STARTUP\]|\[BATCH\]|\[TLOGS\]|Processing:|TEST \d|={5,}/i.test(t)) return 'info';
+  return '';
+}
+function addLog(t,c=''){
+  const stick = autoScroll && nearBottom();
+  const al=document.createElement('div'); al.className='al'+(c?' '+c:''); al.dataset.text=t;
+  // Hidden tabs don't run entrance animations reliably (browser throttling/freezing);
+  // skip the fade so lines are never stuck invisible when the user tabs back.
+  if(document.hidden) al.style.animation='none';
+  al.textContent=t; $('arenaLog').appendChild(al);
+  applyFilterTo(al);
+  if(stick) $('arenaLog').scrollTop=$('arenaLog').scrollHeight;
+  else showJump();
+}
+function applyFilterTo(el){
+  const q=$('termSearch').value.trim().toLowerCase();
+  if(!q){ el.classList.remove('hide'); el.innerHTML=esc(el.dataset.text); if(el.dataset.cls) el.className='al '+el.dataset.cls; return; }
+  const txt=el.dataset.text;
+  if(txt.toLowerCase().includes(q)){
+    el.classList.remove('hide');
+    const i=txt.toLowerCase().indexOf(q);
+    el.innerHTML=esc(txt.slice(0,i))+'<mark>'+esc(txt.slice(i,i+q.length))+'</mark>'+esc(txt.slice(i+q.length));
+  } else el.classList.add('hide');
+}
+function showJump(){ $('termJump').classList.add('show'); }
+$('arenaLog').addEventListener('scroll',()=>{ if(nearBottom()) $('termJump').classList.remove('show'); });
+$('termJump').addEventListener('click',()=>{ $('arenaLog').scrollTop=$('arenaLog').scrollHeight; $('termJump').classList.remove('show'); });
+$('termAutoBtn').addEventListener('click',function(){ autoScroll=!autoScroll; this.classList.toggle('on',autoScroll); if(autoScroll){$('arenaLog').scrollTop=$('arenaLog').scrollHeight;$('termJump').classList.remove('show');} });
+$('termCopyBtn').addEventListener('click',()=>{ const txt=[...$('arenaLog').querySelectorAll('.al')].map(a=>a.dataset.text).join('\n'); navigator.clipboard?.writeText(txt).then(()=>toast('Log copied','success'),()=>toast('Copy failed','error')); });
+$('termClearBtn').addEventListener('click',()=>{ $('arenaLog').innerHTML=''; });
+$('termSearchBtn').addEventListener('click',()=>{ const s=$('termSearch'); s.classList.toggle('show'); if(s.classList.contains('show')) s.focus(); else { s.value=''; document.querySelectorAll('#arenaLog .al').forEach(applyFilterTo); } });
+$('termSearch').addEventListener('input',()=>{ document.querySelectorAll('#arenaLog .al').forEach(applyFilterTo); });
+
+function getGameName() { return $('gameInput').value || $('gameSelect').value || ''; }
+
+/* Phase classification for terminal grouping + progress (read-only, from stream text) */
+const PHASE_ORDER={Setup:0,Startup:1,Checks:2};
+function phaseFor(t){
+  if(/\[STARTUP\]|fully loaded|startup|game ready/i.test(t)) return 'Startup';
+  if(/TEST \d|controls detected|\bspin\b|autoplay|paytable|\bmenu\b|\bbet\b|balance|panel/i.test(t)) return 'Checks';
+  if(/\[SETUP\]|launching|auth|iframe|session|cookie/i.test(t)) return 'Setup';
+  return null;
+}
+function setProg(p){ $('launchBtn').style.setProperty('--p', Math.max(0,Math.min(1,p))); }
+
+/* ═══ LAUNCH ═══ */
+$('launchBtn').addEventListener('click',async()=>{
+  if(isRunning){await fetch('/stop',{method:'POST'});fin();return;}
+  // DSC-only build: the primary action is the auto-sweep.
+  startSweep(); return;
+});
+
+/* legacy single-game launch (retained, unreachable in the DSC-only build) */
+async function launchSingle(){
+  {
+  const g=getGameName(),u=$('inputUser').value,p=$('inputPass').value;
+  if(!g){toast('Select or type a game name.','error');$('gameInput').focus();return;}
+  if(!u||!p){toast('Select an account first.','error');return;}
+  window.lastGame=g;
+  isRunning=true;
+  $('lbLabel').textContent='⏹ Stop';
+  $('launchBtn').classList.add('running'); setProg(.08);
+  $('report').innerHTML='';$('report').classList.remove('visible');
+  $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
+  $('termStatus').textContent='Running · '+g; $('termDot').className='dot run';
+  $('arena').classList.add('launched');
+
+  // per-run phase + progress state
+  let curPhase='', doneChecks=0;
+  const PH_PROG={Setup:.22,Startup:.45,Checks:.62};
+  const ensurePhase=(t)=>{
+    const ph=phaseFor(t);
+    if(ph && ph!==curPhase && (!curPhase || PHASE_ORDER[ph]>PHASE_ORDER[curPhase])){
+      curPhase=ph;
+      const d=document.createElement('div'); d.className='term-phase'; d.textContent=ph;
+      $('arenaLog').appendChild(d);
+      setProg(PH_PROG[ph]);
+    }
+  };
+
+  let dbet='', mbet='';
+  if (window.loadedGames) { const match = window.loadedGames.find(x => x.name === g); if (match){ dbet=match.defaultBet; mbet=match.minBet; } }
+
+  ensurePhase('[SETUP]');
+  addLog(`Launching: ${g}  ·  ${brandLabel(platform)} ${region}`,'info');
+  const tests=[...document.querySelectorAll('#checksGrid input[data-cap]')].filter(c=>c.checked).map(c=>c.dataset.cap);
+  const isHeadless = $('headlessToggle').checked;
+  const res=await fetch('/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game:g,username:u,password:p,mobile:false,headless:isHeadless,brand:platform,region:region,env:env,default_bet:dbet,min_bet:mbet,tests:tests})});
+  if(!res.ok){addLog('Failed.','fail');fin();return;}
+  if(eventSource)eventSource.close();
+  eventSource=new EventSource('/stream');
+  let isParsingReport=false, reportJson='';
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){fin();return;}
+    if(e.data.trim()==='REPORTPAYLOAD==='){ isParsingReport=true; setProg(.96); return; }
+    if(e.data.trim()==='===REPORTPAYLOAD'){
+      isParsingReport=false;
+      try{ renderReport(JSON.parse(reportJson)); setProg(1); }
+      catch(err){ console.error("Report parse error:",err,reportJson); addLog("Failed to parse report: "+err.message,"fail"); }
+      return;
+    }
+    if(isParsingReport){ reportJson+=e.data; return; }
+    let c='';
+    if(/FAIL|❌|error/i.test(e.data))c='fail';
+    else if(/PASS|✅|fully loaded/i.test(e.data))c='pass';
+    else if(/\[SETUP\]|\[STARTUP\]|TEST \d|={5,}/i.test(e.data))c='info';
+    ensurePhase(e.data);
+    if(c==='pass'||c==='fail'){
+      doneChecks++;
+      setProg(Math.min(.92, .62 + doneChecks*0.045));
+      $('lbLabel').textContent=`⏹ Stop · ${doneChecks} check${doneChecks>1?'s':''}`;
+    }
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>fin();
+  }
+}
+
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ═══ AUTO SWEEP (DSC-only) ═══
+   Scope decides which (brand,region)s run; each in-scope region maps to a saved account and
+   becomes one browser (games sharded across same-region accounts). At most `parallel` browsers
+   run at once. Rotation is on GAMES, not providers — every provider runs daily with a fresh game. */
+let sweepScope='region';
+let CONFIGURED_PAIRS=[];          // [{brand,region}] — testable pairs from the backend
+let ALL_ACCTS=[];                 // every saved account (all brands/regions)
+
+async function ensureConfigured(){
+  if(CONFIGURED_PAIRS.length) return;
+  try{ CONFIGURED_PAIRS=(await (await fetch('/api/configured-pairs')).json()).pairs||[]; }catch(e){}
+}
+function scopePairs(){
+  if(sweepScope==='region') return [{brand:platform,region:region}];
+  if(sweepScope==='betway'||sweepScope==='jackpotcity')
+    return CONFIGURED_PAIRS.filter(p=>p.brand===sweepScope);
+  return CONFIGURED_PAIRS.slice();   // 'all'
+}
+function acctsFor(b,r){
+  return ALL_ACCTS.filter(a=>(a.brand||'betway')===b && (a.region||'ZA')===r && (a.env||'PROD')===env);
+}
+const onePerRegion=()=>sweepScope!=='region';   // multi-region = one live browser per region
+function tgtHead(b,r){
+  const rn=(REGION_META[r]||{}).name||r;
+  return `<span class="tgt-info"><span class="tgt-region"><b>${brandLabel(b)}</b> ${r}</span><span class="tgt-rname">${rn}</span></span>`;
+}
+function rowAccount(b,r,a,checked){   // region scope: one row PER account = one parallel browser
+  return `<label class="sweep-tgt" data-b="${b}" data-r="${r}" data-u="${esc(a.username)}"><input type="checkbox" ${checked?'checked':''}><span class="chk-box"></span>${tgtHead(b,r)}<span class="tgt-acct"><b>${esc(a.label)}</b> ${esc(a.username)}</span></label>`;
+}
+function rowRegion(b,r,accs){         // multi-region: one row PER region; backend uses a live account
+  if(!accs.length) return `<div class="sweep-tgt no-acct" data-b="${b}" data-r="${r}" title="No saved account for this region — add one above to include it"><span class="chk-box off"></span>${tgtHead(b,r)}<span class="tgt-acct muted">no account</span></div>`;
+  const more=accs.length>1?` <span class="tgt-more">+${accs.length-1}</span>`:'';
+  return `<label class="sweep-tgt" data-b="${b}" data-r="${r}" title="${accs.length} account(s) — the first that logs in is used"><input type="checkbox" checked><span class="chk-box"></span>${tgtHead(b,r)}<span class="tgt-acct"><b>${esc(accs[0].label)}</b>${more}</span></label>`;
+}
+async function renderTargets(){
+  const box=$('sweepTargets'); if(!box) return;
+  await ensureConfigured();
+  try{ ALL_ACCTS=await (await fetch('/api/accounts')).json(); }catch(e){ ALL_ACCTS=[]; }
+  let rows=[];
+  if(sweepScope==='region'){
+    const accs=acctsFor(platform,region);
+    if(!accs.length){ box.innerHTML=`<div class="acc-empty">No account for <b>${brandLabel(platform)} ${region}</b>. Add one above.</div>`; updateTargetHint(); return; }
+    rows=accs.map((a,i)=>rowAccount(platform,region,a,i===0));
+  }else{
+    rows=scopePairs().map(p=>rowRegion(p.brand,p.region,acctsFor(p.brand,p.region)));
+  }
+  box.innerHTML=rows.join('') || `<div class="acc-empty">No testable regions for this scope.</div>`;
+  updateTargetHint();
+}
+function selectedTargets(){
+  const out=[];
+  document.querySelectorAll('#sweepTargets .sweep-tgt').forEach(row=>{
+    const cb=row.querySelector('input[type=checkbox]');
+    if(!cb||!cb.checked) return;
+    const b=row.dataset.b, r=row.dataset.r;
+    if(row.dataset.u){   // region scope: this row is one specific account
+      const a=ALL_ACCTS.find(x=>(x.brand||'betway')===b && (x.region||'ZA')===r && x.username===row.dataset.u);
+      if(a) out.push({brand:b,region:r,username:a.username,password:a.password,label:a.label});
+    }else{               // multi-region: send ALL the region's accounts; backend uses a live one
+      acctsFor(b,r).forEach(a=>out.push({brand:b,region:r,username:a.username,password:a.password,label:a.label}));
+    }
+  });
+  return out;
+}
+function updateTargetHint(){
+  const el=$('targetHint'); if(!el) return;
+  const rows=[...document.querySelectorAll('#sweepTargets .sweep-tgt')].filter(r=>{const c=r.querySelector('input');return c&&c.checked;});
+  const regions=new Set(rows.map(r=>r.dataset.b+'/'+r.dataset.r)).size;
+  const browsers=sweepScope==='region'?rows.length:regions;
+  el.textContent=rows.length ? `${regions} region${regions>1?'s':''} · ${browsers} browser${browsers>1?'s':''}` : 'nothing selected';
+}
+function sweepOpts(){
+  const limit=parseInt($('sweepLimit').value,10);
+  const parallel=parseInt($('sweepParallel').value,10);
+  const provs=$('sweepProviders').value.split(',').map(s=>s.trim()).filter(Boolean);
+  return {limit:isNaN(limit)?null:limit, parallel:isNaN(parallel)?4:parallel,
+          providers:provs.length?provs:null};
+}
+document.querySelectorAll('#scopeToggle .scope-opt').forEach(b=>{
+  b.addEventListener('click',()=>{
+    sweepScope=b.dataset.scope;
+    document.querySelectorAll('#scopeToggle .scope-opt').forEach(x=>{const on=x===b;x.classList.toggle('active',on);x.setAttribute('aria-checked',on);});
+    $('sweepPlan').innerHTML='';
+    renderTargets();
+  });
+});
+document.getElementById('sweepTargets')?.addEventListener('change',updateTargetHint);
+async function previewPlan(){
+  const targets=selectedTargets();
+  const box=$('sweepPlan');
+  if(!targets.length){ toast('Pick at least one region (with an account) to plan.','error'); return; }
+  box.innerHTML='<div class="acc-empty">Planning… (checking every provider in each region)</div>';
+  const o=sweepOpts();
+  try{
+    const res=await fetch('/api/sweep-plan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({targets,limit:o.limit,providers:o.providers,one_per_region:onePerRegion()})});
+    const d=await res.json();
+    if(!res.ok){ box.innerHTML=`<div class="acc-empty">${esc(d.message||'Plan failed')}</div>`; return; }
+    const groups=d.groups||[];
+    if(!d.total){ box.innerHTML='<div class="acc-empty">Nothing fresh to test — every provider\'s games were tested in the last 7 days (rotation).</div>'; return; }
+    let html=`<div class="sweep-plan-head">${d.total} game(s) across ${groups.filter(g=>g.picks.length).length} region(s) · one per provider</div>`;
+    groups.forEach(g=>{
+      const skip=g.dropped?` <span class="tgt-more">${g.dropped} acct skipped</span>`:'';
+      html+=`<div class="plan-grp"><span>${brandLabel(g.brand)} ${g.region}${skip}</span><span class="plan-grp-n">${g.error?'error':g.picks.length+' games'}</span></div>`;
+      if(g.error){ html+=`<div class="plan-row muted">${esc(g.error)}</div>`; return; }
+      if(!g.picks.length){ html+=`<div class="plan-row muted">nothing fresh this week</div>`; return; }
+      html+=g.picks.map(p=>`<div class="plan-row"><span class="plan-prov">${esc((p.provider||'').replace(/-/g,' '))}</span><span class="plan-sep">·</span><span class="plan-game">${esc(p.game)}</span></div>`).join('');
+    });
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div class="acc-empty">Plan failed.</div>'; }
+}
+async function startSweep(){
+  const targets=selectedTargets();
+  if(!targets.length){ toast('Pick at least one region (with an account) to run.','error'); return; }
+  const o=sweepOpts(), noRec=$('sweepNoRecord').checked;
+  const nRegions=new Set(targets.map(t=>t.brand+'/'+t.region)).size;
+  isRunning=true;
+  $('launchBtn').classList.add('running'); setProg(.04);
+  $('lbLabel').textContent='⏹ Stop';
+  $('report').innerHTML=''; $('report').classList.remove('visible');
+  $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
+  $('arena').classList.add('launched'); $('termDot').className='dot run';
+  addLog(`Auto sweep · ${nRegions} region${nRegions>1?'s':''} · ${targets.length} browser${targets.length>1?'s':''} · ≤${o.parallel} parallel${noRec?' · NOT recording (dry run)':''}`,'info');
+  let d={};
+  try{
+    const res=await fetch('/launch-sweep',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({targets,parallel:o.parallel,headless:$('sweepHeadless').checked,do_not_record:noRec,limit:o.limit,providers:o.providers,one_per_region:onePerRegion()})});
+    d=await res.json().catch(()=>({}));
+    if(!res.ok){ addLog(d.message||'Sweep failed to start.','fail'); toast(d.message||'Sweep failed','error'); fin(); return; }
+  }catch(e){ addLog('Sweep failed: '+e.message,'fail'); fin(); return; }
+  $('termStatus').textContent=`Auto-sweep · ${d.total} games · ${d.regions} region${d.regions>1?'s':''} · ${d.workers} browser${d.workers>1?'s':''}`;
+  if(d.groups) addLog('Plan: '+d.groups.map(g=>`${brandLabel(g.brand)} ${g.region} (${g.games})`).join(' · '),'info');
+  let done=0, total=d.total||1;
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/stream');
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){ fin(); loadHistory(); return; }
+    let c='';
+    if(/FAIL|❌|error/i.test(e.data)) c='fail';
+    else if(/PASS|✅|Report row written|Recorded \d/i.test(e.data)) c='pass';
+    else if(/\[SETUP\]|\[STARTUP\]|\[BATCH\]|\[SWEEP\]|Processing:|={5,}/i.test(e.data)) c='info';
+    if(/Processing:/.test(e.data)){ done++; setProg(Math.min(.95,done/total)); $('lbLabel').textContent=`⏹ Stop · ${Math.min(done,total)}/${total}`; }
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>fin();
+}
+async function loadHistory(){
+  const box=$('historyList'); if(!box) return;
+  try{
+    const d=await (await fetch(`/api/history?brand=${platform}&region=${region}&limit=60`)).json();
+    const rows=d.rows||[];
+    if(!rows.length){ box.innerHTML='<div class="acc-empty">No tests recorded for this brand/region yet.</div>'; return; }
+    box.innerHTML=rows.map(r=>{
+      const t=(r.tested_at||'').slice(0,16).replace('T',' ');
+      const badge=r.bet_placed?'<span class="hist-badge ok">bet</span>':'<span class="hist-badge no">no bet</span>';
+      const tl=r.tlogs&&r.tlogs!=='NA'?`<span class="hist-tlogs">${esc(r.tlogs)}</span>`:'';
+      return `<div class="hist-row"><div class="hist-main"><span class="hist-game">${esc(r.game_name||'')}</span><span class="hist-prov">${esc(r.provider||'')}</span></div><div class="hist-meta">${badge}${tl}<span class="hist-time">${t}</span></div></div>`;
+    }).join('');
+  }catch(e){ box.innerHTML='<div class="acc-empty">History unavailable.</div>'; }
+}
+document.getElementById('historyRefresh')?.addEventListener('click',loadHistory);
+document.getElementById('sweepPlanBtn')?.addEventListener('click',previewPlan);
+
+/* ═══ CRASH GAME ═══ Separate entry from the Auto Sweep: launches the crash suite from a
+   direct URL or by name. LIVE ONLY (2026-07-29, explicit request — the dry-run path was
+   removed from this card on purpose); gated by a confirmation checkbox on top of the
+   server's own MAX_STAKE cap — belt and braces, since this is the one crash path that
+   spends real money. Crash Sweep (separate card, below) is unaffected — still dry-run-only. */
+async function startCrash(){
+  if(isRunning){ toast('A run is already in progress.','error'); return; }
+  const url=$('crashUrlInput').value.trim();
+  const game=$('crashGameInput').value.trim();
+  if(!$('crashLiveConfirm').checked){ toast('Check "I understand this places real money bets" to run.','error'); return; }
+  const stake=parseFloat($('crashLiveStake').value);
+  if(!stake||stake<=0){ toast('Enter a stake amount.','error'); $('crashLiveStake').focus(); return; }
+  const liveBody={live:true, bet:String(stake), target:$('crashLiveTarget').value.trim()};
+  let body, label;
+  if(url){
+    // Direct launch URL (carries its own session token — no account needed).
+    body={game_type:'crash', url, brand:platform, region:region, mobile:false, ...liveBody};
+    label=url;
+  } else if(game){
+    // By name — resolve at runtime using the selected account, exactly like slots.
+    const u=$('inputUser').value, p=$('inputPass').value;
+    if(!u||!p){ toast('Select an account first — crash-by-name authenticates like slots.','error'); return; }
+    body={game_type:'crash', game, username:u, password:p, brand:platform, region:region, mobile:false, ...liveBody};
+    label=`${game}  ·  ${brandLabel(platform)} ${region}`;
+  } else {
+    toast('Enter a crash game name, or paste a launch URL.','error'); $('crashGameInput').focus(); return;
+  }
+  isRunning=true;
+  document.querySelector('.launch-dock').style.display='';   // Stop control — hidden by default in Crash mode
+  $('launchBtn').classList.add('running'); setProg(.08);
+  $('lbLabel').textContent='⏹ Stop';
+  $('report').innerHTML=''; $('report').classList.remove('visible');
+  $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
+  $('termStatus').textContent='Crash · LIVE'; $('termDot').className='dot run';
+  $('arena').classList.add('launched');
+  addLog(`Launching crash game (LIVE — real bets, stake=${liveBody.bet}${liveBody.target?', target='+liveBody.target+'x':''}): `+label,'fail');
+  let res;
+  try{
+    res=await fetch('/launch',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+  }catch(e){ addLog('Failed: '+e.message,'fail'); fin(); return; }
+  if(!res.ok){ const d=await res.json().catch(()=>({})); addLog(d.message||'Failed to start.','fail'); toast(d.message||'Crash launch failed','error'); fin(); return; }
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/stream');
+  let isParsingReport=false, reportJson='';
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){ fin(); return; }
+    if(e.data.trim()==='REPORTPAYLOAD==='){ isParsingReport=true; setProg(.96); return; }
+    if(e.data.trim()==='===REPORTPAYLOAD'){
+      isParsingReport=false;
+      try{ renderReport(JSON.parse(reportJson)); setProg(1); }
+      catch(err){ console.error('Report parse error:',err,reportJson); addLog('Failed to parse report: '+err.message,'fail'); }
+      return;
+    }
+    if(isParsingReport){ reportJson+=e.data; return; }
+    let c='';
+    if(/FAIL|❌|error/i.test(e.data)) c='fail';
+    else if(/PASS|✅|ready/i.test(e.data)) c='pass';
+    else if(/\[SETUP\]|\[STARTUP\]|TEST \d|={5,}/i.test(e.data)) c='info';
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>fin();
+}
+document.getElementById('crashRunBtn')?.addEventListener('click',startCrash);
+
+/* ═══ CRASH GAME SEARCH (typeahead) ═══ Same live-catalog search slots use
+   (/api/games/search — it's provider/vertical-agnostic, just a name search), wired to the
+   crash game-name field. Reuses the .game-suggest CSS + esc()/highlight() helpers already
+   defined for the slot search above; kept deliberately simpler (no pin/recent) since crash
+   verticals only have a handful of titles per region — a quick live-search is the whole ask. */
+const crashGameInput=$('crashGameInput'), crashGameSuggest=$('crashGameSuggest');
+document.body.appendChild(crashGameSuggest);   // portal out so it overlays everything, same as gameSuggest
+function positionCrashSuggest(){ const r=crashGameInput.getBoundingClientRect(); crashGameSuggest.style.left=r.left+'px'; crashGameSuggest.style.top=(r.bottom+8)+'px'; crashGameSuggest.style.width=r.width+'px'; }
+let crashSuggestTimer=null, crashSuggestSeq=0, crashActiveIdx=-1, crashFlatItems=[];
+function hideCrashSuggest(){ crashGameSuggest.classList.remove('open'); crashGameSuggest.innerHTML=''; crashGameInput.setAttribute('aria-expanded','false'); crashActiveIdx=-1; crashFlatItems=[]; }
+function crashItemRow(g,q){
+  const mb=(g.minBetAmount!=null&&g.minBetAmount!=='')?`<span class="gs-meta">min ${esc(g.minBetAmount)}</span>`:'';
+  const badge=g.provider?`<span class="gs-badge">${esc(g.provider)}</span>`:'';
+  return `<div class="game-suggest-item" role="option" data-name="${esc(g.name)}">
+    <span class="gs-glyph">◆</span><span class="gs-name">${highlight(g.name,q)}</span>${badge}${mb}</div>`;
+}
+function selectCrashGame(name){ crashGameInput.value=name; hideCrashSuggest(); }
+function renderCrashSuggest(games,q,note){
+  let html='';
+  if(note) html+=`<div class="game-suggest-note">${esc(note)}</div>`;
+  if(games.length) html+=games.map(g=>crashItemRow(g,q)).join('');
+  if(!html){ hideCrashSuggest(); return; }
+  crashGameSuggest.innerHTML=html; positionCrashSuggest(); crashGameSuggest.classList.add('open'); crashGameInput.setAttribute('aria-expanded','true');
+  crashFlatItems=[...crashGameSuggest.querySelectorAll('.game-suggest-item')]; crashActiveIdx=-1;
+  crashFlatItems.forEach(el=>el.addEventListener('mousedown',e=>{ e.preventDefault(); selectCrashGame(el.dataset.name); }));
+}
+function setCrashActive(i){ if(!crashFlatItems.length) return; crashActiveIdx=(i+crashFlatItems.length)%crashFlatItems.length; crashFlatItems.forEach((el,k)=>el.classList.toggle('active',k===crashActiveIdx)); crashFlatItems[crashActiveIdx].scrollIntoView({block:'nearest'}); }
+async function doCrashSuggest(){
+  const q=crashGameInput.value.trim();
+  if(q.length<2){ hideCrashSuggest(); return; }
+  const u=$('inputUser').value, p=$('inputPass').value;
+  if(!u||!p){ renderCrashSuggest([],q,'Select an account to search the live catalog'); return; }
+  const seq=++crashSuggestSeq;
+  crashGameSuggest.innerHTML=`<div class="game-suggest-note">Searching live catalog…</div>`; positionCrashSuggest(); crashGameSuggest.classList.add('open');
+  try{
+    const r=await fetch('/api/games/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({q,username:u,password:p,brand:platform,region})});
+    const d=await r.json();
+    if(seq!==crashSuggestSeq) return;
+    if(d.error&&(!d.games||!d.games.length)) renderCrashSuggest([],q,d.error);
+    else renderCrashSuggest(d.games||[],q,(d.games&&d.games.length)?null:'No games found');
+  }catch(err){ if(seq===crashSuggestSeq) renderCrashSuggest([],q,'Search failed'); }
+}
+crashGameInput.addEventListener('input',()=>{ clearTimeout(crashSuggestTimer); crashSuggestTimer=setTimeout(doCrashSuggest,250); });
+crashGameInput.addEventListener('blur',()=>setTimeout(hideCrashSuggest,150));
+crashGameInput.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ hideCrashSuggest(); return; }
+  if(!crashGameSuggest.classList.contains('open')) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); setCrashActive(crashActiveIdx+1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); setCrashActive(crashActiveIdx-1); }
+  else if(e.key==='Enter'&&crashActiveIdx>=0){ e.preventDefault(); selectCrashGame(crashFlatItems[crashActiveIdx].dataset.name); }
+});
+window.addEventListener('resize',()=>{ if(crashGameSuggest.classList.contains('open')) positionCrashSuggest(); });
+
+/* ═══ CRASH SWEEP ═══ Discover every crash title for the selected account's region, let the
+   user pick which to run, then batch them one-at-a-time through crash_auto.py --dry-run.
+   Mirrors Auto Sweep's discover→preview→run shape but stays single-account/serial (see
+   /launch-crash-sweep docstring for why there's no parallel-browsers knob here). */
+let crashSweepGames=[];
+function crashSweepSelected(){ return [...document.querySelectorAll('.crash-sweep-chk:checked')].map(c=>({id:c.dataset.id,name:c.dataset.name,provider:c.dataset.provider})); }
+function updateCrashSweepRunLabel(){
+  const n=crashSweepSelected().length;
+  const btn=$('crashSweepRunBtn');
+  if(!btn) return;
+  const live=$('crashSweepLiveToggle')?.checked;
+  if(!n){ btn.textContent='Select at least one game'; btn.classList.remove('live-danger'); return; }
+  if(live){
+    const stake=parseFloat($('crashSweepLiveStake').value)||0;
+    btn.textContent=`Run ${n} selected LIVE (real bets)`;
+    btn.classList.add('live-danger');
+    $('crashSweepExposureHint').textContent=stake>0
+      ? `${n} game(s) x ${stake.toFixed(2)} stake = ${(n*stake).toFixed(2)} total exposure (one at a time)`
+      : 'Enter a stake to see total exposure across the selected games.';
+  } else {
+    btn.textContent=`Run ${n} selected (dry-run)`;
+    btn.classList.remove('live-danger');
+  }
+}
+function updateCrashSweepLiveUI(){
+  const live=$('crashSweepLiveToggle').checked;
+  $('crashSweepLiveFields').style.display=live?'':'none';
+  updateCrashSweepRunLabel();
+}
+$('crashSweepLiveToggle')?.addEventListener('change',updateCrashSweepLiveUI);
+$('crashSweepLiveStake')?.addEventListener('input',updateCrashSweepRunLabel);
+async function discoverCrashSweep(){
+  const u=$('inputUser').value, p=$('inputPass').value;
+  const box=$('crashSweepPlan');
+  if(!u||!p){ toast('Select an account first — discovery authenticates like the single-game search.','error'); return; }
+  box.innerHTML='<div class="acc-empty">Discovering crash titles for this region…</div>';
+  $('crashSweepHeadlessWrap').style.display='none'; $('crashSweepLiveWrap').style.display='none'; $('crashSweepRunBtn').style.display='none';
+  try{
+    const res=await fetch('/api/crash-sweep-plan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p,brand:platform,region})});
+    const d=await res.json();
+    if(!res.ok||d.status==='error'){ box.innerHTML=`<div class="acc-empty">${esc(d.message||'Discovery failed')}</div>`; return; }
+    crashSweepGames=d.games||[];
+    if(!crashSweepGames.length){ box.innerHTML='<div class="acc-empty">No crash titles found for this region.</div>'; return; }
+    let html=`<div class="sweep-plan-head">${crashSweepGames.length} crash game(s) · ${brandLabel(platform)} ${region} <a href="#" id="crashSweepToggleAll" style="margin-left:8px;font-weight:600">select none</a></div>`;
+    html+=crashSweepGames.map((g,i)=>{
+      const mb=(g.minBetAmount!=null&&g.minBetAmount!=='')?`<span class="gs-meta">min ${esc(g.minBetAmount)}</span>`:'<span></span>';
+      return `<div class="plan-row" style="align-items:center"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;margin:0;min-width:0">
+        <input type="checkbox" class="crash-sweep-chk" data-id="${esc(g.id||'')}" data-name="${esc(g.name)}" data-provider="${esc(g.provider||'')}" checked onchange="updateCrashSweepRunLabel()">
+        <span class="plan-prov">${esc((g.provider||'').replace(/-/g,' '))}</span><span class="plan-sep">·</span><span class="plan-game">${esc(g.name)}</span>${mb}
+      </label><button type="button" class="crash-sweep-live-btn" data-idx="${i}" style="margin-left:8px;flex-shrink:0;padding:3px 10px;border-radius:7px;border:1px solid var(--border);background:var(--elevated);color:var(--accent);font:700 11px var(--display);cursor:pointer">▶ Live</button></div>`;
+    }).join('');
+    box.innerHTML=html;
+    $('crashSweepToggleAll').addEventListener('click',e=>{
+      e.preventDefault();
+      const boxes=[...document.querySelectorAll('.crash-sweep-chk')], allOn=boxes.every(c=>c.checked);
+      boxes.forEach(c=>c.checked=!allOn);
+      e.target.textContent=allOn?'select all':'select none';
+      updateCrashSweepRunLabel();
+    });
+    box.querySelectorAll('.crash-sweep-live-btn').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const g=crashSweepGames[+btn.dataset.idx];
+        if(!g) return;
+        // Carry the picked game straight into the Live card — the two flows are otherwise
+        // unconnected (Sweep only ever runs its own dry-run batch), so this is the one bridge
+        // between "discover" and "actually test this one for real".
+        $('crashUrlInput').value='';
+        $('crashGameInput').value=g.name;
+        $('crashSection').scrollIntoView({behavior:'smooth', block:'center'});
+        $('crashLiveStake').focus();
+        toast(`"${g.name}" loaded into the Live card — enter a stake and confirm to run it.`,'success');
+      });
+    });
+    $('crashSweepHeadlessWrap').style.display=''; $('crashSweepLiveWrap').style.display=''; $('crashSweepRunBtn').style.display='';
+    updateCrashSweepRunLabel();
+  }catch(e){ box.innerHTML='<div class="acc-empty">Discovery failed.</div>'; }
+}
+async function runCrashSweep(){
+  if(isRunning){ toast('A run is already in progress.','error'); return; }
+  const picks=crashSweepSelected();
+  if(!picks.length){ toast('Select at least one crash game to run.','error'); return; }
+  const u=$('inputUser').value, p=$('inputPass').value;
+  const live=$('crashSweepLiveToggle')?.checked;
+  let liveBody={};
+  if(live){
+    if(!$('crashSweepLiveConfirm').checked){ toast('Check "I understand this places real money bets on every selected game" to run live.','error'); return; }
+    const stake=parseFloat($('crashSweepLiveStake').value);
+    if(!stake||stake<=0){ toast('Enter a stake amount for the live sweep.','error'); $('crashSweepLiveStake').focus(); return; }
+    liveBody={live:true, bet:String(stake), target:$('crashSweepLiveTarget').value.trim()};
+  }
+  isRunning=true;
+  document.querySelector('.launch-dock').style.display='';   // Stop control — hidden by default in Crash mode
+  $('launchBtn').classList.add('running'); setProg(.04);
+  $('lbLabel').textContent='⏹ Stop';
+  $('report').innerHTML=''; $('report').classList.remove('visible');
+  $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
+  $('termStatus').textContent=`Crash sweep · ${picks.length} games${live?' · LIVE':''}`; $('termDot').className='dot run';
+  $('arena').classList.add('launched');
+  addLog(live
+    ? `Crash sweep · ${picks.length} game(s) · LIVE — stake=${liveBody.bet} per game (${(picks.length*parseFloat(liveBody.bet)).toFixed(2)} total exposure)${liveBody.target?', target='+liveBody.target+'x':''} · one at a time`
+    : `Crash sweep · ${picks.length} game(s) · ${brandLabel(platform)} ${region} · one at a time (dry-run, no wagers)`,
+    live?'fail':'info');
+  let d={};
+  try{
+    const res=await fetch('/launch-crash-sweep',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({picks,username:u,password:p,brand:platform,region,headless:$('crashSweepHeadless').checked, ...liveBody})});
+    d=await res.json().catch(()=>({}));
+    if(!res.ok){ addLog(d.message||'Crash sweep failed to start.','fail'); toast(d.message||'Crash sweep failed','error'); fin(); return; }
+  }catch(e){ addLog('Crash sweep failed: '+e.message,'fail'); fin(); return; }
+  let done=0, total=d.total||picks.length;
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/stream');
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){ fin(); return; }
+    let c='';
+    if(/FAIL|❌|error/i.test(e.data)) c='fail';
+    else if(/PASS|✅|ready/i.test(e.data)) c='pass';
+    else if(/\[SETUP\]|\[STARTUP\]|TEST \d|={5,}/i.test(e.data)) c='info';
+    if(/CRASH GAME RESOLVER/.test(e.data)){ done++; setProg(Math.min(.95,done/total)); $('lbLabel').textContent=`⏹ Stop · ${Math.min(done,total)}/${total}`; }
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>fin();
+}
+document.getElementById('crashSweepDiscoverBtn')?.addEventListener('click',discoverCrashSweep);
+document.getElementById('crashSweepRunBtn')?.addEventListener('click',runCrashSweep);
+
+/* ═══ BATCH LAUNCH ═══ */
+async function launchBatch(){
+  if(!loadedFile){ toast('Re-import the Excel file — the browser lost it.','error'); return; }
+  const workers=batchSelectedAccounts();
+  if(!workers.length){ toast('Select at least one worker account — each account gets its own browser.','error'); return; }
+  const tests=[...document.querySelectorAll('#checksGrid input[data-cap]')].filter(c=>c.checked).map(c=>c.dataset.cap);
+
+  isRunning=true; batchStarted=0; batchRowsDone=0; window._batchSummary='';
+  $('launchBtn').classList.add('running'); setProg(.04);
+  $('report').innerHTML=''; $('report').classList.remove('visible');
+  $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
+  $('arena').classList.add('launched');
+  $('termDot').className='dot run';
+  $('lbLabel').textContent='⏹ Stop';
+  addLog(`Batch: ${batchTotal} games · ${workers.length} account${workers.length===1?'':'s'} → ${Math.min(workers.length,batchTotal)} browser${Math.min(workers.length,batchTotal)===1?'':'s'} · ${brandLabel(platform)} ${region}`,'info');
+  addLog('Accounts: '+workers.map((w,i)=>`W${i+1}=${w.username}`).join(' · '),'info');
+  if(workers.length>batchTotal) addLog(`Note: more accounts than games — only the first ${batchTotal} account${batchTotal===1?'':'s'} will get a browser.`,'info');
+
+  const fd=new FormData();
+  fd.append('excel', loadedFile);
+  fd.append('brand', platform);
+  fd.append('region', region);
+  fd.append('headless', $('headlessToggle').checked);
+  fd.append('accounts', JSON.stringify(workers));
+  fd.append('tests', JSON.stringify(tests.length?tests:['dsc']));
+  let d={};
+  try{
+    const res=await fetch('/launch-batch',{method:'POST',body:fd});
+    d=await res.json().catch(()=>({}));
+    if(!res.ok){ addLog(d.message||'Batch launch failed.','fail'); toast(d.message||'Batch launch failed','error'); fin(); return; }
+  }catch(e){ addLog('Batch launch failed: '+e.message,'fail'); fin(); return; }
+  batchTotal=d.total||batchTotal;
+  $('termStatus').textContent=`Batch · ${batchTotal} games · ${d.workers} worker${d.workers===1?'':'s'}`;
+
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/stream');
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){ showBatchDone(d); fin(); return; }
+    if(/\[BATCH\] Summary/.test(e.data)){ window._batchSummary=e.data.replace(/^\[BATCH\]\s*/,''); }
+    if(/Processing:/.test(e.data)){
+      batchStarted++;
+      $('lbLabel').textContent=`⏹ Stop · ${Math.min(batchStarted,batchTotal)}/${batchTotal}`;
+    }
+    if(/\[DSC\] Report row written|❌ Skipping|failure_row|Run crashed/.test(e.data)){
+      batchRowsDone++;
+      setProg(Math.min(.95, batchRowsDone/Math.max(1,batchTotal)));
+    }
+    let c='';
+    if(/FAIL|❌|error/i.test(e.data)) c='fail';
+    else if(/PASS|✅|Report row written/i.test(e.data)) c='pass';
+    else if(/\[SETUP\]|\[STARTUP\]|\[BATCH\]|Processing:|={5,}/i.test(e.data)) c='info';
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>fin();
+}
+
+function showBatchDone(meta){
+  const r=$('report'); $('arenaLog').style.display='none';
+  const summary=window._batchSummary||'All workers finished.';
+  r.innerHTML=`
+    <div class="rpt2">
+      <header class="rpt2-bar">
+        <div class="rpt2-brand">🍈 <b>Melon</b> <span>DSC Batch</span></div>
+        <div class="rpt2-meta">
+          <span class="rpt2-chip">${brandLabel(platform)}</span>
+          <span class="rpt2-chip">${region}</span>
+          <span class="rpt2-chip">${batchTotal} games</span>
+          <span class="rpt2-chip">${meta&&meta.workers?meta.workers+' workers':''}</span>
+        </div>
+        <div class="rpt2-actions"><button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button></div>
+      </header>
+      <div class="batch-done">
+        <div class="batch-done-icon">📋</div>
+        <h2>Spins done — validation pending</h2>
+        <p class="batch-done-summary">${esc(summary)}</p>
+        <a class="batch-done-dl" href="#" onclick="startTlogsFor('${esc((meta&&meta.report)||'')}');return false">🧾 Validate transactions</a>
+        <p class="batch-done-note">The Excel report is finalized by the validation — Tlogs stays <b>Pending</b> until every spin is checked against the site's transaction history (Betway reflects bets in ~5 min, so give it a moment). Evidence per game: <code>runs/${esc(meta&&meta.run_id?meta.run_id:'')||'…'}/w1…wN/</code>.</p>
+      </div>
+    </div>`;
+  r.classList.add('visible'); r.scrollTop=0;
+  document.addEventListener('keydown',reportKey);
+}
+
+function closeReport(){ const r=$('report'); r.classList.remove('visible'); r.innerHTML=''; $('arenaLog').style.display=''; document.removeEventListener('keydown',reportKey); }
+function reportKey(e){ if(e.key==='Escape') closeReport(); }
+
+/* ═══ TLOGS VALIDATION (phase 2: recorded spins vs the site's transaction history) ═══ */
+function fmtAge(m){ return m<60 ? m+'m ago' : Math.floor(m/60)+'h '+(m%60)+'m ago'; }
+
+/* One-click entry: derive the records file from a report name and go straight to
+   validation — no picker hop. Falls back to the picker when the name is unknown. */
+function startTlogsFor(report){
+  const base=(report||'').split(/[\\\/]/).pop();
+  if(!base||!/\.xlsx$/i.test(base)){ openTlogsPicker(); return; }
+  startTlogs(base.replace(/\.xlsx$/i,'_records.jsonl'));
+}
+
+async function openTlogsPicker(){
+  let items=[];
+  try{ items=await (await fetch('/tlogs-reports')).json(); }
+  catch(e){ toast('Could not list records files','error'); return; }
+  const r=$('report'); $('arenaLog').style.display='none';
+  const rows=items.map(i=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(127,127,127,.18)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis">${esc(i.name)}</div>
+        <div style="opacity:.7;font-size:12px;margin-top:2px">${i.records} record${i.records===1?'':'s'} · ${fmtAge(i.age_min)}${i.validated?' · validated ✓':''}${i.age_min<5?' · ⏳ ran <5 min ago — Betway may not reflect it yet':''}</div>
+      </div>
+      <button class="batch-done-dl" style="cursor:pointer;border:none" onclick="startTlogs('${esc(i.name)}')">Validate</button>
+    </div>`).join('');
+  r.innerHTML=`<div class="rpt2">
+    <header class="rpt2-bar">
+      <div class="rpt2-brand">🍈 <b>Melon</b> <span>Tlogs · Transaction validation</span></div>
+      <div class="rpt2-actions"><button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button></div>
+    </header>
+    <div style="max-width:880px;margin:18px auto;padding:0 16px;">
+      <p style="opacity:.75;margin:6px 2px 14px;font-size:14px">Pick a run's bet records to verify against Betway's transaction history — the validator logs into the site with each worker account and matches every spin by time, amount and running balance. Betway reflects bets in ~5 minutes.</p>
+      ${rows||'<div style="padding:60px 20px;text-align:center;opacity:.6">No records files yet — run a DSC batch first.</div>'}
+    </div></div>`;
+  r.classList.add('visible'); r.scrollTop=0;
+  document.addEventListener('keydown',reportKey);
+}
+
+async function startTlogs(name){
+  if(isRunning){ toast('A run is already in progress','error'); return; }
+  closeReport();
+  isRunning=true;
+  $('termDot').className='dot run'; $('termStatus').textContent='Tlogs validation';
+  $('arena').classList.add('launched'); $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
+  addLog('Tlogs validation · '+name,'info');
+  let d={};
+  try{
+    const res=await fetch('/validate-tlogs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:name})});
+    d=await res.json().catch(()=>({}));
+    if(!res.ok){ toast(d.message||'Could not start validation','error'); endTlogs(); return; }
+  }catch(e){ toast('Could not start: '+e.message,'error'); endTlogs(); return; }
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/stream');
+  let parsing=false, buf='';
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){ endTlogs(); return; }
+    const line=e.data.replace(/^\[TLOGS\]\s?/,'');
+    if(line.trim()==='VALIDATIONPAYLOAD==='){ parsing=true; return; }
+    if(line.trim()==='===VALIDATIONPAYLOAD'){
+      parsing=false;
+      try{ renderTlogsReport(JSON.parse(buf)); }
+      catch(err){ addLog('Validation payload parse failed: '+err.message,'fail'); }
+      return;
+    }
+    if(parsing){ buf+=line; return; }
+    let c='';
+    if(/❌|missing|VIOLATION|crashed|unexpected/i.test(e.data)) c='fail';
+    else if(/✅|verified|logged in|written/i.test(e.data)) c='pass';
+    else if(/\[TLOGS\]/.test(e.data)) c='info';
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>endTlogs();
+}
+
+function endTlogs(){
+  isRunning=false;
+  $('termDot').className='dot done'; $('termStatus').textContent='Tlogs validation finished';
+  if(eventSource){ eventSource.close(); eventSource=null; }
+}
+
+function renderTlogsReport(p){
+  const s=p.summary||{};
+  const chip=(label,n,bad)=>`<span class="rpt2-chip" style="${n&&bad?'background:rgba(220,60,60,.25)':''}">${label}: ${n||0}</span>`;
+  const icon=st=>st==='verified'?'✅':(st==='absent_ok'?'▫️':(st==='verified_amount_time_only'?'⚠️':'❌'));
+  const shot=x=>(x&&x.shot&&p.shots_dir)
+    ?`<img class="rc-shot tlogs-shot" loading="lazy" alt="History evidence" src="/runs/${esc(p.shots_dir)}/${esc(x.shot)}" onclick="openViewer(this)">`
+    :'—';
+  const rows=(p.results||[]).map(r=>`
+    <tr>
+      <td>${icon(r.status)} ${esc(r.game)}</td><td>${esc(r.account)}</td>
+      <td style="text-align:right">${r.wager==null?'—':'R '+r.wager.toFixed(2)}</td>
+      <td>${esc(r.status)}</td>
+      <td>${esc(r.entry_time||'—')}</td>
+      <td style="text-align:right">${r.running_balance==null?'—':'('+r.running_balance.toFixed(2)+')'}</td>
+      <td>${r.payout_ok==null?'—':(r.payout_ok?'✓':'✗')}</td>
+      <td style="font-family:monospace;font-size:11px;max-width:230px;overflow:hidden;text-overflow:ellipsis">${esc(r.txid||'—')}</td>
+      <td>${shot(r)}</td>
+    </tr>${(r.notes||[]).length?`<tr><td colspan="9" style="opacity:.65;font-size:11px;padding:0 8px 8px 26px">${esc(r.notes.join(' · '))}</td></tr>`:''}`).join('');
+  const unexpected=(p.unexpected||[]).map(u=>`<li><b>${esc(u.provider)}</b> R ${u.amount.toFixed(2)} at ${esc(u.time)} (bal ${u.running.toFixed(2)}) · <code style="font-size:11px">${esc(u.txid)}</code>${u.shot&&p.shots_dir?` · <a href="/runs/${esc(p.shots_dir)}/${esc(u.shot)}" target="_blank">📸 evidence</a>`:''}</li>`).join('');
+  const accErrs=Object.entries(p.account_errors||{}).map(([a,m])=>`<li><b>${esc(a)}</b>: ${esc(m)}</li>`).join('');
+  const r=$('report'); $('arenaLog').style.display='none';
+  r.innerHTML=`<div class="rpt2">
+    <header class="rpt2-bar">
+      <div class="rpt2-brand">🍈 <b>Melon</b> <span>Tlogs · Transaction validation</span></div>
+      <div class="rpt2-meta">
+        ${chip('Verified',s.verified)} ${chip('Weak',s.verified_weak,true)} ${chip('Missing',s.missing,true)}
+        ${chip('No-bet OK',s.absent_ok)} ${chip('Unexpected',s.unexpected_wagers,true)} ${chip('Violations',s.violations,true)}
+      </div>
+      <div class="rpt2-actions">
+        ${p.report?`<a class="rpt2-act" href="/dsc-report/file/${encodeURIComponent(p.report)}" title="The finalized Excel — Tlogs verdicts filled in">⤓ Excel report</a>`:''}
+        <button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button>
+      </div>
+    </header>
+    <div style="max-width:1120px;margin:16px auto;padding:0 16px 30px;">
+      <p style="opacity:.7;font-size:13px;margin:4px 2px 12px">${esc(p.records_file||'')} · window ±${p.window_min||8} min · ${esc(p.generated_at||'')}${p.report?' · Excel finalized ✓':''}</p>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:left;opacity:.7"><th style="padding:6px 8px">Game</th><th>Account</th><th style="text-align:right">Wager</th><th>Status</th><th>History time</th><th style="text-align:right">Balance</th><th>Payout</th><th>Wallet transaction ID</th><th>Evidence</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="9" style="padding:30px;text-align:center;opacity:.6">No results</td></tr>'}</tbody>
+      </table></div>
+      ${unexpected?`<h3 style="margin:18px 2px 6px;font-size:14px">⚠️ Wagers in history that match no record</h3><ul style="font-size:13px;line-height:1.7">${unexpected}</ul>`:''}
+      ${accErrs?`<h3 style="margin:18px 2px 6px;font-size:14px">❌ Accounts not checked</h3><ul style="font-size:13px;line-height:1.7">${accErrs}</ul>`:''}
+    </div></div>`;
+  r.classList.add('visible'); r.scrollTop=0;
+  document.addEventListener('keydown',reportKey);
+}
+
+function renderReport(payload){
+  const r=$('report'); r.innerHTML='';
+  const results=Array.isArray(payload)?payload:(payload&&payload.results)||[];
+  const summary=(payload&&payload.summary)||{};
+  const runId=(payload&&payload.run_id)||summary.run_id||'';
+  if(!results||!results.length){
+    $('arenaLog').style.display='none';
+    r.innerHTML=`<div class="rpt2"><header class="rpt2-bar"><div class="rpt2-brand">🍈 <b>Melon</b> <span>QA Report</span></div><button class="rpt2-close" onclick="closeReport()">✕</button></header><div class="acc-empty" style="padding:80px 20px;">No checks produced results — see the log.</div></div>`;
+    r.classList.add('visible'); document.addEventListener('keydown',reportKey); return;
+  }
+  $('arenaLog').style.display='none';
+
+  const passed=results.filter(x=>x.passed===true).length;
+  const failed=results.filter(x=>x.passed===false).length;
+  const skipped=results.filter(x=>x.passed!==true&&x.passed!==false).length;
+  const total=results.length;
+  const rate=total?Math.round(passed/total*100):0;
+  const gameName=window.lastGame||getGameName()||'Slot game';
+  const dur=summary.duration_s!=null?`${summary.duration_s}s`:'';
+  const shotBase=runId?`/runs/${runId}/screenshots/`:'/screenshots/';
+  const vidBase =runId?`/runs/${runId}/video/`:'/recordings/';
+  const ringColor=rate>=80?'var(--green)':(rate>=50?'var(--amber)':'var(--accent)');
+
+  window._lastReport=payload;
+  window._lastReportSummary=`Melon QA — ${gameName} · ${brandLabel(platform)} ${region} (${env})\n${rate}% passed · ${passed} passed / ${failed} failed / ${skipped} skipped of ${total}${dur?` · ${dur}`:''}${runId?`\nrun ${runId}`:''}`;
+
+  // pass-rate history (per game) → trend + sparkline
+  let hist=[], trend='';
+  try{
+    const key='melon_hist_'+gameName;
+    hist=JSON.parse(localStorage.getItem(key)||'[]'); if(!Array.isArray(hist)) hist=[];
+    const prev=hist.length?hist[hist.length-1]:null;
+    hist.push(rate); if(hist.length>12) hist=hist.slice(-12);
+    localStorage.setItem(key,JSON.stringify(hist));
+    if(prev!=null){ const d=rate-prev; if(d>0) trend=`<span class="trend up">▲ +${d}%</span>`; else if(d<0) trend=`<span class="trend down">▼ ${d}%</span>`; }
+  }catch(e){}
+  const avg=hist.length?Math.round(hist.reduce((a,b)=>a+b,0)/hist.length):rate;
+  const statsHtml=`
+    <section class="rpt-stats">
+      <div class="rpt-stat-card">
+        <div class="rs-head">Outcome mix</div>
+        <div class="rpt-statbar">
+          ${passed?`<span class="seg-pass" style="flex:${passed}"></span>`:''}
+          ${failed?`<span class="seg-fail" style="flex:${failed}"></span>`:''}
+          ${skipped?`<span class="seg-skip" style="flex:${skipped}"></span>`:''}
+        </div>
+        <div class="rs-legend"><span><i class="d pass"></i>Passed ${passed}</span><span><i class="d fail"></i>Failed ${failed}</span><span><i class="d skip"></i>Skipped ${skipped}</span></div>
+      </div>
+      ${hist.length>=2?`<div class="rpt-stat-card"><div class="rs-head">Pass rate · last ${hist.length} runs</div>${sparkline(hist)}<div class="rs-sub">this run <b>${rate}%</b> · avg ${avg}%</div></div>`:''}
+    </section>`;
+
+  const statusOf=res=>res.passed===true?'pass':(res.passed===false?'fail':'skip');
+  const card=(res,i)=>{
+    const cls=statusOf(res);
+    const badge=cls==='pass'?'PASS':(cls==='fail'?'FAIL':'SKIP');
+    const hasClip=res.video&&res.video_end>res.video_start;
+    let media='';
+    if(res.screenshot) media+=`<img class="rc-shot" loading="lazy" alt="Evidence for ${esc(res.name)}" src="${shotBase}${res.screenshot}" onclick="openViewer(this)">`;
+    if(hasClip){ const s=Math.max(0,res.video_start-1.0).toFixed(1),e=(res.video_end+1.0).toFixed(1);
+      media+=`<div class="rc-vid"><video class="rc-clip" src="${vidBase}${res.video}#t=${s},${e}" controls preload="metadata" title="Clip · ${esc(res.name)}"></video><button class="rc-vid-expand" title="Open in viewer" aria-label="Open clip in viewer" onclick="openViewer(this.previousElementSibling)">⤢</button></div>`; }
+    const acts=Array.isArray(res.actions)?res.actions:[];
+    const actsHtml=acts.length?`<details class="rc-acts"><summary>${acts.length} step${acts.length>1?'s':''}</summary><ul>${acts.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`:'';
+    return `<article class="rc ${cls}" id="rc-${i}" data-status="${cls}">
+      <div class="rc-head"><span class="rc-pill ${cls}">${badge}</span><span class="rc-name">${esc(res.name)}</span></div>
+      ${res.details?`<div class="rc-detail">${esc(res.details)}</div>`:''}
+      ${actsHtml}${media?`<div class="rc-media">${media}</div>`:''}</article>`;
+  };
+
+  const heroImg=summary.elements_shot?`<figure class="rh-elems"><img alt="Detected UI elements on ${esc(gameName)}" src="${shotBase}${summary.elements_shot}" onclick="openViewer(this)"><figcaption>Detected UI elements</figcaption></figure>`:'';
+  const tl=results.map((res,i)=>`<span class="rpt-tl-node ${statusOf(res)}" title="${esc(res.name)}" onclick="document.getElementById('rc-${i}').scrollIntoView({behavior:'smooth',block:'center'})"></span>`).join('<span class="rpt-tl-line"></span>');
+
+  r.innerHTML=`
+    <div class="rpt2">
+      <header class="rpt2-bar">
+        <div class="rpt2-brand">🍈 <b>Melon</b> <span>QA Report</span></div>
+        <div class="rpt2-meta">
+          <span class="rpt2-game">${esc(gameName)}</span>
+          <span class="rpt2-chip">${brandLabel(platform)}</span>
+          <span class="rpt2-chip">${region}</span>
+          <span class="rpt2-chip">${env}</span>
+          ${dur?`<span class="rpt2-chip">⏱ ${dur}</span>`:''}
+          ${runId?`<span class="rpt2-chip mono" title="Copy run id" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(runId)}')">${esc(runId)}</span>`:''}
+        </div>
+        <div class="rpt2-actions">
+          <button class="rpt2-act" onclick="copyReportSummary()" title="Copy summary">Copy</button>
+          <button class="rpt2-act" onclick="exportReport()" title="Download JSON">⤓ Export</button>
+          <button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button>
+        </div>
+      </header>
+
+      <section class="rh">
+        <div class="rh-score">
+          <div class="rh-ring" id="rhRing" style="--ring-c:${ringColor}"><div class="rh-ring-in"><div class="rh-rate" id="rhRate">0<span>%</span></div><div class="rh-rate-lbl">passed</div></div></div>
+          <div class="rh-verdict">${passed} of ${total} checks passed ${trend}</div>
+          <div class="rh-chips">
+            <div class="rh-chip pass"><b>${passed}</b><span>Passed</span></div>
+            <div class="rh-chip fail"><b>${failed}</b><span>Failed</span></div>
+            <div class="rh-chip skip"><b>${skipped}</b><span>Skipped</span></div>
+            <div class="rh-chip total"><b>${total}</b><span>Checks</span></div>
+          </div>
+        </div>
+        ${heroImg}
+      </section>
+
+      ${statsHtml}
+
+      <div class="rpt-timeline">${tl}</div>
+
+      <div class="rpt-seg" id="rptSeg">
+        <button class="seg-btn active" data-f="all">All <span class="n">${total}</span></button>
+        <button class="seg-btn" data-f="pass">Passed <span class="n">${passed}</span></button>
+        <button class="seg-btn" data-f="fail">Failed <span class="n">${failed}</span></button>
+        <button class="seg-btn" data-f="skip">Skipped <span class="n">${skipped}</span></button>
+        <input class="rpt-search" id="rptSearch" type="text" placeholder="Filter checks…" aria-label="Filter checks">
+      </div>
+
+      <section class="rpt2-grid" id="rptGrid">${results.map(card).join('')}</section>
+      <div class="rpt-nomatch" id="rptNoMatch" hidden>No checks match your filter.</div>
+    </div>`;
+  r.classList.add('visible'); r.scrollTop=0;
+  document.addEventListener('keydown',reportKey);
+
+  // combined segment + text filter (AND)
+  let segFilter='all', txtFilter='';
+  const applyReportFilter=()=>{
+    let shown=0;
+    document.querySelectorAll('#rptGrid .rc').forEach(c=>{
+      const segOk = segFilter==='all' || c.dataset.status===segFilter;
+      let txtOk=true;
+      if(txtFilter){
+        const nm=c.querySelector('.rc-name')?.textContent||'';
+        const dt=c.querySelector('.rc-detail')?.textContent||'';
+        txtOk=(nm+' '+dt).toLowerCase().includes(txtFilter);
+      }
+      const vis=segOk&&txtOk; c.classList.toggle('hide',!vis); if(vis) shown++;
+    });
+    const nmEl=$('rptNoMatch'); if(nmEl) nmEl.hidden = shown>0;
+  };
+  $('rptSeg').addEventListener('click',e=>{
+    const b=e.target.closest('.seg-btn'); if(!b) return;
+    document.querySelectorAll('#rptSeg .seg-btn').forEach(x=>x.classList.toggle('active',x===b));
+    segFilter=b.dataset.f; applyReportFilter();
+  });
+  $('rptSearch').addEventListener('input',e=>{ txtFilter=e.target.value.trim().toLowerCase(); applyReportFilter(); });
+
+  // ring sweep + count-up
+  if(RM){ $('rhRing').style.setProperty('--sweep',(rate*3.6)+'deg'); $('rhRate').innerHTML=rate+'<span>%</span>'; }
+  else {
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ $('rhRing').style.setProperty('--sweep',(rate*3.6)+'deg'); }));
+    let start=null; const dur2=1200;
+    const tick=ts=>{ if(start===null)start=ts; const t=Math.min(1,(ts-start)/dur2); const val=Math.round((1-Math.pow(1-t,3))*rate); const el=$('rhRate'); if(el) el.innerHTML=val+'<span>%</span>'; if(t<1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+}
+
+function sparkline(vals){
+  const w=240,h=52,pad=5,n=vals.length;
+  if(n<2) return '';
+  const x=i=>pad+i*(w-2*pad)/(n-1);
+  const y=v=>h-pad-(Math.max(0,Math.min(100,v)))/100*(h-2*pad);
+  const pts=vals.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  const line='M'+pts.join(' L');
+  const area=`M${x(0).toFixed(1)},${(h-pad).toFixed(1)} L`+pts.join(' L')+` L${x(n-1).toFixed(1)},${(h-pad).toFixed(1)} Z`;
+  const last=vals[n-1], lc=last>=80?'var(--green)':(last>=50?'var(--amber)':'var(--accent)');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${area}" fill="rgba(225,29,72,.08)"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${x(n-1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="3.2" fill="${lc}"/></svg>`;
+}
+function exportReport(){
+  if(!window._lastReport){ toast('Nothing to export','error'); return; }
+  try{
+    const blob=new Blob([JSON.stringify(window._lastReport,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`melon-report-${String(window.lastGame||'run').replace(/[^a-z0-9]+/gi,'_')}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    toast('Report exported','success');
+  }catch(e){ toast('Export failed','error'); }
+}
+function copyReportSummary(){
+  const s=window._lastReportSummary; if(!s){ toast('Nothing to copy','error'); return; }
+  (navigator.clipboard?navigator.clipboard.writeText(s):Promise.reject()).then(()=>toast('Summary copied','success'),()=>toast('Copy failed','error'));
+}
+
+function openViewer(el){
+  const list=[...document.querySelectorAll('#report .rc-shot, #report .rh-elems img, #report .rc-clip')].filter(m=>m.offsetParent!==null);
+  if(!list.length) return;
+  let idx=Math.max(0,list.indexOf(el));
+  const o=document.createElement('div'); o.className='rpt-zoom';
+  o.innerHTML=`
+    <button class="rpt-zoom-close" aria-label="Close">✕</button>
+    <button class="rpt-zoom-nav prev" aria-label="Previous">‹</button>
+    <div class="rpt-zoom-stage"></div>
+    <button class="rpt-zoom-nav next" aria-label="Next">›</button>
+    <div class="rpt-zoom-bar"><div class="rpt-zoom-count"></div><div class="rpt-zoom-cap"></div></div>`;
+  const stage=o.querySelector('.rpt-zoom-stage'), prev=o.querySelector('.prev'), next=o.querySelector('.next'),
+        count=o.querySelector('.rpt-zoom-count'), cap=o.querySelector('.rpt-zoom-cap');
+  let scale=1,px=0,py=0,drag=false,sx=0,sy=0,img=null;
+  const applyT=()=>{ if(img) img.style.transform=`translate(${px}px,${py}px) scale(${scale})`; };
+  const show=()=>{
+    const m=list[idx]; stage.innerHTML=''; scale=1;px=0;py=0;drag=false;img=null;
+    if(m.tagName==='VIDEO'){
+      const v=document.createElement('video');
+      v.src=m.getAttribute('src'); v.controls=true; v.autoplay=true; v.muted=true; v.playsInline=true; v.preload='metadata';
+      stage.appendChild(v); cap.textContent=m.getAttribute('title')||'Video clip';
+    } else {
+      img=document.createElement('img'); img.src=m.src; img.alt=m.alt||''; img.draggable=false;
+      stage.appendChild(img); cap.textContent=m.alt||'';
+      img.addEventListener('click',e=>{ e.stopPropagation(); if(drag)return; if(scale===1){scale=2;img.classList.add('zoomed');} else {scale=1;px=0;py=0;img.classList.remove('zoomed');} applyT(); });
+      img.addEventListener('wheel',e=>{ e.preventDefault(); scale=Math.max(1,Math.min(4,scale+(e.deltaY<0?0.3:-0.3))); if(scale===1){px=0;py=0;} img.classList.toggle('zoomed',scale>1); applyT(); },{passive:false});
+      img.addEventListener('pointerdown',e=>{ if(scale===1)return; drag=false; sx=e.clientX-px; sy=e.clientY-py;
+        try{img.setPointerCapture(e.pointerId);}catch(_){}
+        img.classList.add('grabbing');
+        const mv=ev=>{ drag=true; px=ev.clientX-sx; py=ev.clientY-sy; applyT(); };
+        const up=()=>{ img.classList.remove('grabbing'); img.removeEventListener('pointermove',mv); img.removeEventListener('pointerup',up); setTimeout(()=>{drag=false;},0); };
+        img.addEventListener('pointermove',mv); img.addEventListener('pointerup',up); });
+    }
+    count.textContent=(idx+1)+' / '+list.length;
+    prev.toggleAttribute('disabled',idx<=0); next.toggleAttribute('disabled',idx>=list.length-1);
+  };
+  const close=()=>{ o.remove(); document.removeEventListener('keydown',onKey); };
+  const go=d=>{ idx=Math.max(0,Math.min(list.length-1,idx+d)); show(); };
+  const onKey=e=>{ if(e.key==='Escape')close(); else if(e.key==='ArrowLeft')go(-1); else if(e.key==='ArrowRight')go(1); };
+  prev.addEventListener('click',e=>{e.stopPropagation();go(-1);});
+  next.addEventListener('click',e=>{e.stopPropagation();go(1);});
+  o.querySelector('.rpt-zoom-close').addEventListener('click',e=>{e.stopPropagation();close();});
+  o.addEventListener('click',e=>{ if(e.target===o||e.target.classList.contains('rpt-zoom-stage')) close(); });
+  document.addEventListener('keydown',onKey);
+  document.body.appendChild(o); show();
+}
+
+function fin(){
+  if(eventSource)eventSource.close(); eventSource=null; isRunning=false;
+  $('launchBtn').classList.remove('running'); setProg(0);
+  updateLaunchLabel();
+  // Crash mode hides the dock by default (crash has its own inline Run buttons) — startCrash/
+  // runCrashSweep re-show it only to expose the Stop control while running; put it back once done.
+  if(window.testMode==='crash') document.querySelector('.launch-dock').style.display='none';
+  $('termStatus').textContent='Done'; $('termDot').className='dot';
+  addLog('Done.',''); loadAccounts(); loadRuns();
+}
+
+/* ═══ EXCEL IMPORT + GAME SELECT ═══ */
+const smartInputZone=$('smartInputZone'), excelInput=$('excelFile'), gameSelect=$('gameSelect'), gameCount=$('gameCount');
+const smartInputIcon=document.querySelector('.smart-input-icon');
+smartInputIcon.addEventListener('click',()=>excelInput.click());
+smartInputIcon.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();excelInput.click();} });
+smartInputZone.addEventListener('dragover',e=>{ e.preventDefault(); smartInputZone.classList.add('drag-over'); });
+smartInputZone.addEventListener('dragleave',()=>smartInputZone.classList.remove('drag-over'));
+smartInputZone.addEventListener('drop',e=>{ e.preventDefault(); smartInputZone.classList.remove('drag-over'); if(e.dataTransfer.files.length) handleExcel(e.dataTransfer.files[0]); });
+excelInput.addEventListener('change',e=>{ if(e.target.files.length) handleExcel(e.target.files[0]); });
+
+function handleExcel(file){
+  if(typeof XLSX==='undefined'){
+    toast('Spreadsheet library did not load — hard-refresh the page (Ctrl+F5). If it persists, static/xlsx.full.min.js is missing.','error');
+    return;
+  }
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      const gameKey=Object.keys(rows[0]||{}).find(k=>/game.?name/i.test(k));
+      const providerKey=Object.keys(rows[0]||{}).find(k=>/provider/i.test(k));
+      const defaultBetKey=Object.keys(rows[0]||{}).find(k=>/default.?bet/i.test(k));
+      const minBetKey=Object.keys(rows[0]||{}).find(k=>/min.?bet/i.test(k));
+      if(!gameKey){ toast('Could not find a "Game Name" column.','error'); return; }
+      const games=rows.filter(r=>r[gameKey]).map(r=>({
+        name:String(r[gameKey]).trim(),
+        provider:providerKey?String(r[providerKey]).trim():'',
+        defaultBet:defaultBetKey?String(r[defaultBetKey]).trim():'',
+        minBet:minBetKey?String(r[minBetKey]).trim():''
+      }));
+      window.loadedGames=games;
+      gameSelect.innerHTML='<option value="">Pick a game…</option>';
+      games.forEach(g=>{ const opt=document.createElement('option'); opt.value=g.name; opt.textContent=g.provider?`${g.name}  ·  ${g.provider}`:g.name; gameSelect.appendChild(opt); });
+      gameSelect.style.display='block'; gameSelect.disabled=false;
+      gameCount.textContent=`✓ ${games.length} games loaded from ${file.name}`;
+      smartInputZone.classList.add('loaded');
+      enterBatch(file, games);
+    }catch(err){ toast('Failed to parse file: '+err.message,'error'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+gameSelect.addEventListener('change',()=>{ $('gameInput').value=gameSelect.value; window.selectedGame=null; if(gameSelect.value) exitBatch('Single-game mode — only "'+gameSelect.value+'" will run'); });
+
+/* ═══ BATCH MODE (import a sheet → every game runs; workers = parallel browsers) ═══ */
+function enterBatch(file, games){
+  batchMode=true; loadedFile=file; batchTotal=games.length;
+  $('batchPanel').style.display=''; $('batchCount').textContent=games.length;
+  $('gameInput').value='';
+  // DSC is the batch workflow: pre-select it (the user can still change checks).
+  document.querySelectorAll('#checksGrid input[data-cap]').forEach(c=>c.checked = c.dataset.cap==='dsc');
+  renderBatchWorkers();
+  updateLaunchLabel();
+  toast(`Batch armed: all ${games.length} games will run (DSC)`,'success');
+}
+function exitBatch(msg){
+  if(!batchMode) return;
+  batchMode=false; $('batchPanel').style.display='none';
+  updateLaunchLabel();
+  if(msg) toast(msg,'info');
+}
+$('batchExit').addEventListener('click',()=>exitBatch('Single-game mode — pick a game to run'));
+
+/* One browser per CHECKED account: N accounts selected = N parallel browsers, the
+   sheet is split round-robin between them. Selection is keyed by username (unique
+   per brand/region) and survives re-renders; switching brand/region prunes it. */
+let batchAccountSel = new Set();   // usernames checked for the batch run
+let batchAccs = [];                // accounts available under the current brand/region/env
+
+async function renderBatchWorkers(){
+  const host=$('batchWorkers'); if(!host) return;
+  try{
+    const all=await (await fetch('/api/accounts')).json();
+    batchAccs=all.filter(a=>(a.brand||'betway')===platform && (a.region||'ZA')===region && (a.env||'PROD')===env);
+  }catch(e){ host.innerHTML='<div class="batch-empty">Could not load accounts.</div>'; return; }
+  if(!batchAccs.length){
+    batchAccountSel.clear();
+    host.innerHTML=`<div class="batch-empty">No accounts for <b>${brandLabel(platform)} ${region}</b> (${env}) — add accounts above to run a batch.</div>`;
+    updateBatchDistrib(); updateLaunchLabel(); return;
+  }
+  const names=new Set(batchAccs.map(a=>a.username));
+  [...batchAccountSel].forEach(u=>{ if(!names.has(u)) batchAccountSel.delete(u); });
+  // First render: pre-check the account picked in the Accounts list (or the first one).
+  if(!batchAccountSel.size) batchAccountSel.add(names.has(selectedUser)?selectedUser:batchAccs[0].username);
+  host.innerHTML=`
+    <div class="bw-toolbar">
+      <span class="bw-count" id="bwCount"></span>
+      <button type="button" class="bw-all" id="bwAll">Select all</button>
+    </div>`
+    + batchAccs.map(a=>`
+    <label class="batch-worker">
+      <input type="checkbox" class="bw-chk" value="${esc(a.username)}" ${batchAccountSel.has(a.username)?'checked':''}>
+      <span class="bw-box"></span>
+      <span class="bw-name">${esc(a.label||a.username)}</span>
+      <span class="bw-user">${esc(a.username)}</span>
+    </label>`).join('');
+  host.querySelectorAll('.bw-chk').forEach(c=>c.addEventListener('change',()=>{
+    if(c.checked) batchAccountSel.add(c.value); else batchAccountSel.delete(c.value);
+    updateBatchDistrib(); updateLaunchLabel();
+  }));
+  $('bwAll').addEventListener('click',()=>{
+    const selectAll=batchAccountSel.size<batchAccs.length;
+    batchAccountSel=new Set(selectAll?batchAccs.map(a=>a.username):[]);
+    host.querySelectorAll('.bw-chk').forEach(c=>c.checked=batchAccountSel.has(c.value));
+    updateBatchDistrib(); updateLaunchLabel();
+  });
+  updateBatchDistrib(); updateLaunchLabel();
+}
+
+function batchSelectedAccounts(){
+  return batchAccs.filter(a=>batchAccountSel.has(a.username))
+                  .map(a=>({username:a.username,password:a.password}));
+}
+
+/* Distribution preview ("10 games ÷ 4 browsers → 2–3 games each") + selection warnings. */
+function updateBatchDistrib(){
+  const el=$('batchDistrib'); if(!el) return;
+  const n=batchAccountSel.size, g=batchTotal;
+  const allBtn=$('bwAll'); if(allBtn) allBtn.textContent=(batchAccs.length&&n>=batchAccs.length)?'Clear all':'Select all';
+  const cnt=$('bwCount'); if(cnt) cnt.textContent=`${n} account${n===1?'':'s'} → ${n} browser${n===1?'':'s'}`;
+  if(!batchAccs.length || !g){ el.innerHTML=''; return; }
+  if(!n){ el.innerHTML='<span class="bw-warn">⚠ Select at least one account — each account runs its own browser.</span>'; return; }
+  if(n>g){
+    el.innerHTML=`<span class="bw-warn">⚠ ${n} accounts selected but the sheet has only ${g} game${g===1?'':'s'} — only ${g} browser${g===1?'':'s'} will open.</span>`;
+    return;
+  }
+  const lo=Math.floor(g/n), hi=Math.ceil(g/n);
+  el.innerHTML=`📊 ${g} games ÷ ${n} browser${n===1?'':'s'} → <b>${lo===hi?lo:lo+'–'+hi}</b> game${hi===1?'':'s'} per account (round-robin)`;
+}
+
+function updateLaunchLabel(){
+  if(isRunning) return;
+  if(batchMode){
+    const w=Math.min(batchAccountSel.size, batchTotal||batchAccountSel.size);
+    $('lbLabel').textContent=w?`Run ${batchTotal} games · ${w} browser${w===1?'':'s'}`:`Select accounts to run ${batchTotal} games`;
+  } else {
+    $('lbLabel').textContent='Launch Test';
+  }
+}
+
+/* ═══ GAME COMMAND SEARCH ═══ */
+const gameInput=$('gameInput'), gameSuggest=$('gameSuggest');
+document.body.appendChild(gameSuggest);   // portal out of the glass panel so it overlays everything
+function positionSuggest(){ const r=gameInput.getBoundingClientRect(); gameSuggest.style.left=r.left+'px'; gameSuggest.style.top=(r.bottom+8)+'px'; gameSuggest.style.width=r.width+'px'; }
+let suggestTimer=null, suggestSeq=0, activeIdx=-1, flatItems=[];
+window.selectedGame=null;
+const store={ get(k){ try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return[];} }, set(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch{} } };
+let recent=store.get('melon_recent'), pinned=store.get('melon_pinned');
+const isPinned=n=>pinned.some(x=>x.name===n);
+
+function hideSuggest(){ gameSuggest.classList.remove('open'); gameSuggest.innerHTML=''; gameInput.setAttribute('aria-expanded','false'); activeIdx=-1; flatItems=[]; }
+function highlight(name,q){ if(!q) return esc(name); const i=name.toLowerCase().indexOf(q.toLowerCase()); if(i<0) return esc(name); return esc(name.slice(0,i))+'<b>'+esc(name.slice(i,i+q.length))+'</b>'+esc(name.slice(i+q.length)); }
+
+function selectGame(it){
+  gameInput.value=it.name;
+  window.selectedGame={id:it.id||null,minBetAmount:it.minBetAmount!=null?it.minBetAmount:null};
+  recent=[{name:it.name,id:it.id||null,minBetAmount:it.minBetAmount!=null?it.minBetAmount:null,provider:it.provider||''},...recent.filter(x=>x.name!==it.name)].slice(0,6);
+  store.set('melon_recent',recent); hideSuggest();
+  exitBatch('Single-game mode — only "'+it.name+'" will run');
+}
+function togglePin(it){
+  if(isPinned(it.name)) pinned=pinned.filter(x=>x.name!==it.name);
+  else pinned=[{name:it.name,id:it.id||null,minBetAmount:it.minBetAmount!=null?it.minBetAmount:null,provider:it.provider||''},...pinned].slice(0,12);
+  store.set('melon_pinned',pinned);
+}
+
+function itemRow(g,q){
+  const mb=(g.minBetAmount!=null&&g.minBetAmount!=='')?`<span class="gs-meta">min ${esc(g.minBetAmount)}</span>`:'';
+  const badge=g.provider?`<span class="gs-badge">${esc(g.provider)}</span>`:'';
+  const pin=isPinned(g.name)?'pinned':'';
+  return `<div class="game-suggest-item ${pin}" role="option" data-name="${esc(g.name)}" data-id="${esc(g.id||'')}" data-mb="${esc(g.minBetAmount!=null?g.minBetAmount:'')}" data-prov="${esc(g.provider||'')}">
+    <span class="gs-glyph">◆</span><span class="gs-name">${highlight(g.name,q)}</span>${badge}${mb}
+    <button class="gs-pin ${pin}" title="Pin" tabindex="-1">★</button></div>`;
+}
+function renderGroups(groups,q,note){
+  let html=''; flatItems=[];
+  if(note) html+=`<div class="game-suggest-note">${esc(note)}</div>`;
+  groups.forEach(gr=>{ if(!gr.items.length) return; html+=`<div class="game-suggest-group">${esc(gr.label)}</div>`+gr.items.map(g=>itemRow(g,q)).join(''); });
+  if(!html){ hideSuggest(); return; }
+  gameSuggest.innerHTML=html; positionSuggest(); gameSuggest.classList.add('open'); gameInput.setAttribute('aria-expanded','true');
+  flatItems=[...gameSuggest.querySelectorAll('.game-suggest-item')]; activeIdx=-1;
+  flatItems.forEach(el=>{
+    const it={name:el.dataset.name,id:el.dataset.id||null,minBetAmount:el.dataset.mb||null,provider:el.dataset.prov||''};
+    el.addEventListener('mousedown',e=>{ if(e.target.closest('.gs-pin')) return; e.preventDefault(); selectGame(it); });
+    el.querySelector('.gs-pin').addEventListener('mousedown',e=>{ e.preventDefault(); e.stopPropagation(); togglePin(it); doSuggest(); });
+  });
+}
+function setActive(i){ if(!flatItems.length) return; activeIdx=(i+flatItems.length)%flatItems.length; flatItems.forEach((el,k)=>el.classList.toggle('active',k===activeIdx)); flatItems[activeIdx].scrollIntoView({block:'nearest'}); }
+
+async function doSuggest(){
+  const q=gameInput.value.trim();
+  window.selectedGame=null;
+  const u=$('inputUser').value, p=$('inputPass').value;
+  if(q.length<2){
+    const groups=[{label:'Pinned',items:pinned},{label:'Recent',items:recent}];
+    if(pinned.length||recent.length) renderGroups(groups,'',null); else hideSuggest();
+    return;
+  }
+  if(!u||!p){
+    if(window.loadedGames&&window.loadedGames.length){
+      const m=window.loadedGames.filter(g=>g.name.toLowerCase().includes(q.toLowerCase())).slice(0,10);
+      renderGroups([{label:'From matrix',items:m}],q,m.length?null:'No match in imported list');
+    } else renderGroups([],q,'Select an account to search the live catalog');
+    return;
+  }
+  const seq=++suggestSeq;
+  gameSuggest.innerHTML=`<div class="game-suggest-note">Searching live catalog…</div>`; positionSuggest(); gameSuggest.classList.add('open');
+  try{
+    const r=await fetch('/api/games/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({q,username:u,password:p,brand:platform,region})});
+    const d=await r.json();
+    if(seq!==suggestSeq) return;
+    if(d.error&&(!d.games||!d.games.length)) renderGroups([],q,d.error);
+    else renderGroups([{label:'Results',items:d.games||[]}],q,(d.games&&d.games.length)?null:'No games found');
+  }catch(err){ if(seq===suggestSeq) renderGroups([],q,'Search failed'); }
+}
+gameInput.addEventListener('input',()=>{ clearTimeout(suggestTimer); suggestTimer=setTimeout(doSuggest,250); });
+gameInput.addEventListener('focus',()=>doSuggest());
+gameInput.addEventListener('blur',()=>setTimeout(hideSuggest,150));
+gameInput.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ hideSuggest(); return; }
+  if(!gameSuggest.classList.contains('open')) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); setActive(activeIdx+1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); setActive(activeIdx-1); }
+  else if(e.key==='Enter'&&activeIdx>=0){ e.preventDefault(); const el=flatItems[activeIdx]; selectGame({name:el.dataset.name,id:el.dataset.id||null,minBetAmount:el.dataset.mb||null,provider:el.dataset.prov||''}); }
+});
+document.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){ e.preventDefault(); gameInput.focus(); doSuggest(); } });
+document.querySelector('.ctrl-scroll').addEventListener('scroll',()=>{ if(gameSuggest.classList.contains('open')) positionSuggest(); });
+window.addEventListener('resize',()=>{ if(gameSuggest.classList.contains('open')) positionSuggest(); });
+
+/* ═══ CHECK SELECTION (toggle all / none) — governs #checksGrid, unchanged behavior ═══ */
+(function(){
+  const grid=$('checksGrid'), btn=$('checksToggle');
+  if(!grid||!btn) return;
+  const boxes=()=>[...grid.querySelectorAll('input[data-cap]')];
+  const sync=()=>{ const all=boxes().every(c=>c.checked); btn.textContent=all?'none':'all'; };
+  btn.addEventListener('click',()=>{ const all=boxes().every(c=>c.checked); boxes().forEach(c=>c.checked=!all); sync(); });
+  grid.addEventListener('change',sync);
+  sync();
+})();
+
+/* ═══ RECENT RUNS (server-backed history — survives refreshes) ═══ */
+function fmtWhen(iso){
+  try{ const d=new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+  catch(e){ return ''; }
+}
+async function loadRuns(){
+  const host=$('runsList'); if(!host) return;
+  let runs=[];
+  try{ runs=await (await fetch('/api/runs')).json(); }catch(e){ return; }
+  if(!Array.isArray(runs)||!runs.length){ host.innerHTML='<div class="acc-empty">No runs yet.</div>'; return; }
+  host.innerHTML='';
+  runs.slice(0,5).forEach(r=>{
+    // Tlogs validation needs a real wager to have happened — slot DSC batches always have
+    // one; Crash Sweep never does (dry-run only, see /launch-crash-sweep) so it must NOT
+    // offer "Validate" (it could only ever say "no records yet"). The single Crash game card
+    // is LIVE-only now (2026-07-29) and does write real bet records (run_crash_tests'
+    // dsc_report.append_record call) — tagged "crash-live" specifically so it gets Validate too.
+    const isSlotBatch=(r.type==='batch'||r.type==='sweep')||/_DSC(sweep)?$/.test(r.run_id||'');
+    const isCrashSweep=r.type==='crash-sweep'||/_crash_sweep$/.test(r.run_id||'');
+    const isCrashLive=r.type==='crash-live';
+    const hasValidate=isSlotBatch||isCrashLive;
+    const isBatch=isSlotBatch||isCrashSweep;
+    const row=document.createElement('div'); row.className='run-row';
+    row.innerHTML=`
+      <div class="run-ic">${isBatch?'📋':'🎰'}</div>
+      <div class="run-info">
+        <div class="run-name">${esc(r.game||r.run_id)}</div>
+        <div class="run-meta">${esc(brandLabel(r.brand||'betway'))} ${esc(r.region||'')} · ${fmtWhen(r.started_at)}${isBatch&&r.workers?` · ${r.workers}w`:''}</div>
+      </div>
+      <button class="run-open" title="Open results">Results</button>
+      ${hasValidate?`<button class="run-open run-validate" title="Validate spins against the site's transaction history">🧾 Validate</button>`:''}`;
+    row.querySelector('.run-open').addEventListener('click',()=>openRunReport(r,isBatch));
+    const rv=row.querySelector('.run-validate');
+    if(rv) rv.addEventListener('click',async()=>{
+      if(r.report){ startTlogsFor(r.report); return; }
+      try{
+        const d=await (await fetch('/api/report/'+encodeURIComponent(r.run_id))).json();
+        if(d.report){ startTlogsFor(d.report); return; }
+      }catch(e){}
+      openTlogsPicker();
+    });
+    host.appendChild(row);
+  });
+}
+$('runsRefresh').addEventListener('click',loadRuns);
+
+async function openRunReport(r,isBatch){
+  let d={};
+  try{
+    const res=await fetch('/api/report/'+encodeURIComponent(r.run_id));
+    d=await res.json().catch(()=>({}));
+    if(!res.ok){ toast(d.error||'No saved results for this run','error'); return; }
+  }catch(e){ toast('Could not load results: '+e.message,'error'); return; }
+  if(d.crash) renderCrashSweepReport(d,r);
+  else if(d.batch||isBatch) renderBatchReport(d,r);
+  else { window.lastGame=r.game; renderReport(d); }
+}
+
+/* Crash sweep table: one row per game, aggregated on the fly server-side from each game's own
+   results.json (no shared Excel report exists for crash — see /api/report's _crash_sweep_rows).
+   Each row links straight into that game's own screenshots via the existing /runs/<run_id>/
+   <path:filename> static route — no new file-serving route needed. */
+function renderCrashSweepReport(d,r){
+  const rows=d.rows||[];
+  const tr=rows.map(x=>{
+    if(x.error) return `<tr class="f"><td class="bt-game">${esc(x.name)}</td><td colspan="4" class="bt-err">${esc(x.error)}</td></tr>`;
+    const chip=(n,cls)=>n?`<span class="bt-chip ${cls}">${n}</span>`:'<span class="bt-chip na">0</span>';
+    const shot=`/runs/${encodeURIComponent(d.run_id)}/${encodeURIComponent(x.folder)}/screenshots/crash_elements.png`;
+    return `<tr class="${x.failed?'f':''}">
+      <td class="bt-game"><a href="${shot}" target="_blank" rel="noopener">${esc(x.name)}</a></td>
+      <td>${x.total}</td><td>${chip(x.passed,'pass')}</td><td>${chip(x.failed,'fail')}</td><td>${chip(x.skipped,'na')}</td>
+    </tr>`;
+  }).join('');
+  const nFail=rows.filter(x=>x.failed).length;
+  const rp=$('report'); $('arenaLog').style.display='none';
+  rp.innerHTML=`<div class="rpt2">
+    <header class="rpt2-bar">
+      <div class="rpt2-brand">🍈 <b>Melon</b> <span>Crash Sweep</span></div>
+      <div class="rpt2-meta">
+        <span class="rpt2-game">${esc(d.run_id||'')}</span>
+        <span class="rpt2-chip">${rows.length} games</span>
+        ${nFail?`<span class="rpt2-chip" style="background:rgba(220,60,60,.25)">${nFail} with failures</span>`:''}
+      </div>
+      <div class="rpt2-actions">
+        <a class="rpt2-act" href="/api/crash-report/${encodeURIComponent(d.run_id)}" title="Download Excel (Sr.No/Provider/Game Name/Game Type/Launch/Bet Placed/Tlogs/Remark/Evidence)">⤓ Excel</a>
+        <button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button>
+      </div>
+    </header>
+    <div class="bt-wrap">
+      <table class="bt-table"><thead><tr><th>Game</th><th>Total</th><th>Passed</th><th>Failed</th><th>Skipped</th></tr></thead>
+      <tbody>${tr}</tbody></table>
+    </div>
+  </div>`;
+  rp.classList.add('visible');
+}
+
+/* Batch validation table: the report sheet rendered row-by-row with Pass/Fail chips,
+   filterable to failures — so the sheet can be sanity-checked without opening Excel. */
+function renderBatchReport(d,r){
+  const rows=d.rows||[];
+  const pf=v=>{ const s=String(v||'').trim().toLowerCase();
+    return s==='pass'?'<span class="bt-chip pass">Pass</span>':(s==='fail'?'<span class="bt-chip fail">Fail</span>':(s?'<span class="bt-chip na">'+esc(v)+'</span>':'<span class="bt-chip na">—</span>')); };
+  const isFail=x=>['Launch','Bet Placed','Tlogs'].some(c=>String(x[c]||'').trim().toLowerCase()==='fail');
+  const isPending=x=>!String(x['Launch']||'').trim();
+  const tr=rows.map(x=>`
+    <tr class="${isFail(x)?'f':''} ${isPending(x)?'p':''}">
+      <td>${esc(x['Sr. No.'])}</td><td>${esc(x['Provider'])}</td>
+      <td class="bt-game">${esc(x['Game Name'])}</td>
+      <td>${isPending(x)?'<span class="bt-chip na">not run</span>':pf(x['Launch'])}</td>
+      <td>${pf(x['Bet Placed'])}</td><td>${pf(x['Tlogs'])}</td>
+      <td class="bt-err">${esc(x['Error']||'')}</td>
+    </tr>`).join('');
+  const nFail=rows.filter(isFail).length, nPend=rows.filter(isPending).length;
+  const rp=$('report'); $('arenaLog').style.display='none';
+  rp.innerHTML=`<div class="rpt2">
+    <header class="rpt2-bar">
+      <div class="rpt2-brand">🍈 <b>Melon</b> <span>DSC Batch</span></div>
+      <div class="rpt2-meta">
+        <span class="rpt2-game">${esc((r&&r.game)||d.run_id||'')}</span>
+        <span class="rpt2-chip">${rows.length} games</span>
+        ${nFail?`<span class="rpt2-chip" style="background:rgba(220,60,60,.25)">${nFail} with failures</span>`:''}
+        ${nPend?`<span class="rpt2-chip">${nPend} not run</span>`:''}
+      </div>
+      <div class="rpt2-actions">
+        <a class="rpt2-act" href="/dsc-report/file/${encodeURIComponent(d.report||'')}" title="Download Excel">⤓ Excel</a>
+        <button class="rpt2-act" onclick="openTlogsPicker()" title="Verify against transaction history">🧾 Tlogs</button>
+        <button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button>
+      </div>
+    </header>
+    <div class="bt-wrap">
+      <p class="bt-summary">${esc(d.summary||'')}</p>
+      <div class="rpt-seg" style="margin:0 0 10px">
+        <button class="seg-btn active" data-bf="all">All <span class="n">${rows.length}</span></button>
+        <button class="seg-btn" data-bf="fail">Failures <span class="n">${nFail}</span></button>
+      </div>
+      <div class="bt-scroll"><table class="bt-table">
+        <thead><tr><th>Sr.</th><th>Provider</th><th>Game</th><th>Launch</th><th>Bet</th><th>Tlogs</th><th>Error</th></tr></thead>
+        <tbody>${tr||'<tr><td colspan="7" style="padding:40px;text-align:center;opacity:.6">Empty report</td></tr>'}</tbody>
+      </table></div>
+    </div></div>`;
+  rp.classList.add('visible'); rp.scrollTop=0;
+  document.addEventListener('keydown',reportKey);
+  rp.querySelectorAll('.seg-btn[data-bf]').forEach(b=>b.addEventListener('click',()=>{
+    rp.querySelectorAll('.seg-btn[data-bf]').forEach(x=>x.classList.toggle('active',x===b));
+    const failOnly=b.dataset.bf==='fail';
+    rp.querySelectorAll('.bt-table tbody tr').forEach(row=>{ row.style.display=(failOnly&&!row.classList.contains('f'))?'none':''; });
+  }));
+}
+
+/* ═══ RESUME AFTER REFRESH: a refresh used to orphan a running sweep — reattach. ═══ */
+async function resumeIfRunning(){
+  let st={};
+  try{ st=await (await fetch('/api/status')).json(); }catch(e){ return; }
+  if(st.status!=='running') return;   // idle => leave the home arena alone
+  isRunning=true;
+  $('arena').classList.add('launched'); $('arenaLog').style.display='';
+  $('termStatus').textContent='Running · '+(st.game||''); $('termDot').className='dot run';
+  $('launchBtn').classList.add('running'); $('lbLabel').textContent='⏹ Stop';
+  // /stream replays the whole run from line 0 on connect, so nothing is lost.
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/stream');
+  const batchMeta=st.batch||null;
+  let parsing=false, buf='';
+  if(batchMeta&&batchMeta.total) batchTotal=batchMeta.total;
+  eventSource.onmessage=(e)=>{
+    if(e.data==='[MELON_STREAM_END]'){ if(batchMeta) showBatchDone(batchMeta); fin(); return; }
+    if(batchMeta){
+      if(/\[BATCH\] Summary/.test(e.data)) window._batchSummary=e.data.replace(/^\[BATCH\]\s*/,'');
+    } else {
+      if(e.data.trim()==='REPORTPAYLOAD==='){ parsing=true; return; }
+      if(e.data.trim()==='===REPORTPAYLOAD'){ parsing=false; try{ renderReport(JSON.parse(buf)); }catch(err){} return; }
+      if(parsing){ buf+=e.data; return; }
+    }
+    let c='';
+    if(/FAIL|❌|error/i.test(e.data)) c='fail';
+    else if(/PASS|✅/i.test(e.data)) c='pass';
+    else if(/\[SETUP\]|\[STARTUP\]|\[BATCH\]|TEST \d|={5,}/i.test(e.data)) c='info';
+    addLog(e.data,c);
+  };
+  eventSource.onerror=()=>fin();
+}
+
+/* ═══ INIT ═══ */
+buildRegions(); updateCtx(); loadAccounts(); loadRuns(); resumeIfRunning();
+</script>
+</body>
+</html>

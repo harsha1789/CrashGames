@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+
+# Video recordings
+recordings/
+*.webm
+*.mp4
+
+# Screenshots
+screenshots/
+
+# Credentials / sensitive
+accounts.json
+
+# Excel / binary data
+*.xlsx
+*.xls
+
+# Temp / output files
+out.txt
+
+# Local API keys (never commit real keys)
+api_keys.json
+provider_sweep_accounts.json
+
+# Per-run artifacts
+runs/
+
+# DSC rotation/audit database
+dsc_history.db

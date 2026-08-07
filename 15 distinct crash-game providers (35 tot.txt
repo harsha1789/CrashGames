@@ -1,0 +1,42 @@
+15 distinct crash-game providers (35 total crash titles across them), discovered from the casino's live catalog:
+
+Aviatrix
+Betgames-Casino
+Betway
+EGT
+Evolution
+Games-Global-South-Africa
+Incentive-Gaming
+Light-and-Wonder
+Playtech
+Playtech-Live
+Pragmatic-Play
+Smartsoft-Gaming
+Split-the-Pot
+Spribe
+Turbo-Games
+We're validating one representative game per provider — 7 have run so far in the current batch, 8 still in progress.
+
+35 total crash-game titles across those 15 providers (this run tests only 1 representative game per provider — 15 of the 35 total titles). Per-provider breakdown:
+
+dating one representative game per provider — 7 have run so far in the current batch, 8 still in progress.
+
+35 total crash-game titles across those 15 providers (this run tests only 1 representative game per provider — 15 of the 35 total titles). Per-provider breakdown:
+
+Provider	# Titles
+Split-the-Pot	5
+Betway	4
+Incentive-Gaming	3
+Pragmatic-Play	3
+Smartsoft-Gaming	3
+Turbo-Games	3
+Betgames-Casino	2
+Evolution	2
+Games-Global-South-Africa	2
+Playtech-Live	2
+Spribe	2
+Aviatrix	1
+EGT	1
+Light-and-Wonder	1
+Playtech	1
+Total	35

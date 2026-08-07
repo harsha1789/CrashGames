@@ -1,0 +1,133 @@
+{
+  "game_key": "betway_ZA_7192",
+  "layout": "desktop",
+  "saved_at": 1783321372.236992,
+  "controls": [
+    {
+      "label": "Balance Display",
+      "box_2d": [
+        27,
+        149,
+        47,
+        203
+      ]
+    },
+    {
+      "label": "Spin Gifts",
+      "box_2d": [
+        304,
+        0,
+        377,
+        36
+      ]
+    },
+    {
+      "label": "Home / Lobby",
+      "box_2d": [
+        18,
+        755,
+        41,
+        775
+      ]
+    },
+    {
+      "label": "Sound Toggle",
+      "box_2d": [
+        18,
+        786,
+        41,
+        804
+      ]
+    },
+    {
+      "label": "Menu",
+      "box_2d": [
+        18,
+        816,
+        41,
+        836
+      ]
+    },
+    {
+      "label": "Bet Decrement",
+      "box_2d": [
+        894,
+        161,
+        951,
+        196
+      ]
+    },
+    {
+      "label": "Bet Display",
+      "box_2d": [
+        906,
+        200,
+        939,
+        240
+      ]
+    },
+    {
+      "label": "Bet Increment",
+      "box_2d": [
+        894,
+        243,
+        951,
+        278
+      ]
+    },
+    {
+      "label": "Autoplay",
+      "box_2d": [
+        894,
+        281,
+        951,
+        335
+      ]
+    },
+    {
+      "label": "Buy Bonus / Feature Buy",
+      "box_2d": [
+        894,
+        630,
+        951,
+        690
+      ]
+    },
+    {
+      "label": "Turbo",
+      "box_2d": [
+        894,
+        694,
+        951,
+        750
+      ]
+    },
+    {
+      "label": "Spin Button",
+      "box_2d": [
+        804,
+        757,
+        940,
+        840
+      ]
+    },
+    {
+      "label": "Info / Paytable",
+      "box_2d": [
+        979,
+        5,
+        994,
+        29
+      ]
+    },
+    {
+      "label": "Help",
+      "box_2d": [
+        979,
+        30,
+        994,
+        52
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+google-genai
+Pillow
+playwright
+requests
+flask
+curl-cffi
+pandas
+openpyxl

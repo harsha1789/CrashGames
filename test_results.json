@@ -1,0 +1,126 @@
+{
+  "run_id": "01_Atlassian-Williams-Racing",
+  "summary": {
+    "run_id": "01_Atlassian-Williams-Racing",
+    "total": 11,
+    "passed": 2,
+    "failed": 1,
+    "skipped": 8,
+    "started_at": "2026-08-08T01:29:27.056845",
+    "duration_s": 974.7,
+    "elements_shot": "crash_elements.png",
+    "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm"
+  },
+  "results": [
+    {
+      "name": "Crash UI controls detected",
+      "passed": true,
+      "details": "Found 21 controls: ['Balance Display', 'Round History', 'Bet Decrement (-)', 'Bet Amount Input', 'Bet Increment (+)', 'Bet Button', 'Bet Decrement (-)', 'Bet Amount Input', 'Bet Increment (+)', 'Bet Button', 'Multiplier Display', 'Cash Out Button', 'Auto Bet Toggle', 'Auto Cash Out Toggle', 'Auto Cash Out Input', 'Bet Decrement (-)', 'Bet Increment (+)', 'Bet Button', 'Auto Bet Toggle', 'Auto Cash Out Toggle', 'Auto Cash Out Input']",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 99.4,
+      "actions": []
+    },
+    {
+      "name": "Round lifecycle observed (betting->ascending->crashed)",
+      "passed": false,
+      "details": "Phases observed: ['BETTING']",
+      "screenshot": "crash_ascending_0.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 99.4,
+      "video_end": 153.2,
+      "actions": []
+    },
+    {
+      "name": "Multiplier ascends monotonically",
+      "passed": null,
+      "details": "Too few multiplier readings to judge: [44.17]",
+      "screenshot": "crash_asc_0.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 153.2,
+      "video_end": 202.0,
+      "actions": []
+    },
+    {
+      "name": "Round history updates after crash",
+      "passed": true,
+      "details": "The first image shows the multipliers '1.05x 1.43x 1.22x 6.34x 1.56x 3.0x', while the second image shows '3.37x 1.69x 1.58x 11.67x 1.05x 1.43x'. The values have changed and new ones have been added, indicating an update.",
+      "screenshot": "crash_hist_after.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Place bet during betting window = 1 place-bet request",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Cash out during flight returns bet x multiplier",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Balance updates correctly (-bet, +payout on cash out)",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Auto cash-out fires at configured target",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Bet rejected when placed mid-flight",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Cancel bet before round start refunds stake",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    },
+    {
+      "name": "Rapid double-click Bet = still 1 bet",
+      "passed": null,
+      "details": "Skipped: requires --live (places real wagers)",
+      "screenshot": "crash_controls.png",
+      "video": "page@ffc357f03cd2fd454f7af70874f3ae62.webm",
+      "video_start": 0.0,
+      "video_end": 0.0,
+      "actions": []
+    }
+  ]
+}

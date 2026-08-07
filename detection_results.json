@@ -1,0 +1,80 @@
+[
+  {
+    "label": "Menu Button",
+    "center": [
+      598,
+      1019
+    ],
+    "bbox": [
+      560,
+      984,
+      637,
+      1055
+    ]
+  },
+  {
+    "label": "Balance display area",
+    "center": [
+      755,
+      1022
+    ],
+    "bbox": [
+      643,
+      988,
+      867,
+      1056
+    ]
+  },
+  {
+    "label": "Bet amount display area",
+    "center": [
+      1141,
+      1017
+    ],
+    "bbox": [
+      1071,
+      978,
+      1211,
+      1057
+    ]
+  },
+  {
+    "label": "Bet Decrement",
+    "center": [
+      1253,
+      1020
+    ],
+    "bbox": [
+      1224,
+      984,
+      1282,
+      1057
+    ]
+  },
+  {
+    "label": "Spin Button",
+    "center": [
+      1301,
+      1018
+    ],
+    "bbox": [
+      1248,
+      979,
+      1355,
+      1058
+    ]
+  },
+  {
+    "label": "Autospin / Autoplay button",
+    "center": [
+      1368,
+      1020
+    ],
+    "bbox": [
+      1336,
+      983,
+      1401,
+      1057
+    ]
+  }
+]
