@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import glob
+import uuid
 import queue
 import threading
 import subprocess
@@ -10,26 +11,71 @@ from flask import Flask, render_template, request, Response, jsonify, send_from_
 import time
 from datetime import datetime
 
-app = Flask(__name__)
+# In a frozen PyInstaller build, __file__ resolves inside the bundled _internal/ folder, not
+# the folder actually holding app.exe (and the sibling worker .exes _worker_cmd looks for) —
+# os.path.dirname(sys.executable) is the correct base for WRITABLE data (accounts.json,
+# runs/, screenshots/, ...) in that case. Bundled READ-ONLY resources (templates/, static/)
+# live under sys._MEIPASS instead (PyInstaller's _internal/ folder in --onedir builds).
+# Dev mode (running app.py from source) is unaffected: sys.frozen is unset, both point at the
+# same project root as today.
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+    RESOURCE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    RESOURCE_DIR = BASE_DIR
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, root_path=BASE_DIR,
+           template_folder=os.path.join(RESOURCE_DIR, "templates"),
+           static_folder=os.path.join(RESOURCE_DIR, "static"))
 SCREENSHOTS_DIR = os.path.join(BASE_DIR, "screenshots")
 RECORDINGS_DIR = os.path.join(BASE_DIR, "recordings")
 RUNS_DIR = os.path.join(BASE_DIR, "runs")
 RUNS_INDEX = os.path.join(RUNS_DIR, "index.json")
 ACCOUNTS_FILE = os.path.join(BASE_DIR, "accounts.json")
 RESULTS_FILE = os.path.join(BASE_DIR, "test_results.json")
+SCHEDULES_FILE = os.path.join(BASE_DIR, "scheduled_jobs.json")
+SCHEDULED_UPLOADS_DIR = os.path.join(RUNS_DIR, "scheduled")
 
 # Ensure dirs exist
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 os.makedirs(RUNS_DIR, exist_ok=True)
+os.makedirs(SCHEDULED_UPLOADS_DIR, exist_ok=True)
 
 
 def _slug(s, maxlen=40):
     """Filesystem-safe slug for run-folder names."""
     s = re.sub(r"[^A-Za-z0-9._-]+", "-", (s or "").strip()).strip("-")
     return (s[:maxlen] or "game")
+
+
+def _worker_cmd(script, *args):
+    """Build the argv for a worker subprocess (test_spin_button.py, crash_auto.py, or
+    tlogs_validate.py). In dev mode (running from source) this shells out to the .py file
+    via the SAME interpreter running app.py, exactly as before. In a frozen/compiled build
+    (see build_exe.py) a frozen app.exe can't be told to run an arbitrary .py file the way
+    `python -u script.py` can — so each worker is compiled into its OWN executable sitting
+    next to app.exe, and this just points at that instead."""
+    if getattr(sys, "frozen", False):
+        exe = os.path.join(BASE_DIR, os.path.splitext(script)[0] + ".exe")
+        return [exe, *args]
+    return [sys.executable, "-u", script, *args]
+
+
+def _parse_money(text):
+    """Best-effort numeric parse of a currency-formatted amount (the crash catalog's
+    minBetAmount comes back as whatever the provider set — '1', '0.50', 'R 1', 'R0.50' have
+    all been observed live — not a bare number). Deliberately NOT test_spin_button.parse_amount:
+    importing that module here would pull in its heavy import-time side effects (a Gemini
+    client, Playwright) into the Flask process for a one-line strip-and-parse."""
+    if text is None:
+        return None
+    digits = re.sub(r"[^\d.]", "", str(text))
+    try:
+        return float(digits) if digits else None
+    except ValueError:
+        return None
 
 # Single-user global run state. A "run" is 1..N worker subprocesses (parallel DSC gives
 # each selected account its own browser worker); their stdout lines are multiplexed into
@@ -306,6 +352,113 @@ def save_accounts(accounts):
         json.dump(accounts, f, indent=2)
 
 
+# ─── Scheduled jobs ──────────────────────────────────────────────
+# Same flat-JSON-list pattern as accounts.json/load_accounts/save_accounts — always read fresh
+# from disk (no in-memory cache), which is what gives this restart-safety for free: nothing
+# special has to happen at startup, the next poll tick just re-reads whatever's on disk.
+def load_schedules():
+    if os.path.exists(SCHEDULES_FILE):
+        with open(SCHEDULES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def save_schedules(schedules):
+    with open(SCHEDULES_FILE, "w", encoding="utf-8") as f:
+        json.dump(schedules, f, indent=2)
+
+
+def _schedule_is_due(job, now):
+    """Pure due-check (no side effects) so the poll loop's decision is easy to reason about.
+    "once": fires exactly once, at/after run_at. "daily": fires once per matching day, at/after
+    time_of_day (days_of_week empty/absent = every day)."""
+    rec = job.get("recurrence") or {}
+    kind = rec.get("kind")
+    last_run_at = job.get("last_run_at")
+    if kind == "once":
+        run_at = rec.get("run_at")
+        if not run_at or last_run_at:
+            return False
+        try:
+            return now >= datetime.fromisoformat(run_at)
+        except ValueError:
+            return False
+    if kind == "daily":
+        time_of_day = rec.get("time_of_day") or ""
+        try:
+            hh, mm = (int(x) for x in time_of_day.split(":")[:2])
+        except (ValueError, AttributeError):
+            return False
+        days = rec.get("days_of_week")
+        if days and now.weekday() not in days:
+            return False
+        if (now.hour, now.minute) < (hh, mm):
+            return False
+        if last_run_at:
+            try:
+                if datetime.fromisoformat(last_run_at).date() == now.date():
+                    return False   # already ran today
+            except ValueError:
+                pass
+        return True
+    return False
+
+
+def _run_due_schedules():
+    """Poll tick: launch every enabled, due job through the SAME helpers a manual click uses
+    (_do_launch_batch / _do_launch_crash_sweep) — a scheduled run gets the exact same
+    validation and safety gates (accounts required, MAX_STAKE cap, etc.) a human click does.
+    A job due while a run is already in progress is left alone (not consumed) so it fires on
+    the next tick once the current run ends — the same single global run slot a manual click
+    competes for."""
+    schedules = load_schedules()
+    if not schedules:
+        return
+    now = datetime.now()
+    changed = False
+    for job in schedules:
+        if not job.get("enabled") or not _schedule_is_due(job, now):
+            continue
+        if _workers_alive():
+            continue   # busy — stays due, retried next tick
+        payload = job.get("payload") or {}
+        try:
+            if job.get("type") == "slot":
+                result, status = _do_launch_batch(
+                    payload.get("input_path"), payload.get("brand", "betway"),
+                    payload.get("region", "ZA"), payload.get("accounts") or [],
+                    bool(payload.get("headless")), payload.get("tests") or ["dsc"])
+            elif job.get("type") == "crash":
+                result, status = _do_launch_crash_sweep(
+                    payload.get("picks"), payload.get("username", ""), payload.get("password", ""),
+                    payload.get("brand", "betway"), payload.get("region", "ZA"),
+                    bool(payload.get("headless")), bool(payload.get("live")),
+                    payload.get("bet"), payload.get("target"))
+            else:
+                result, status = {"message": f"unknown schedule type {job.get('type')!r}"}, 400
+        except Exception as e:
+            result, status = {"message": str(e)}, 500
+        job["last_run_at"] = now.isoformat()
+        job["last_run_id"] = result.get("run_id")
+        job["last_status"] = "ok" if status == 200 else f"error: {result.get('message', status)}"
+        if (job.get("recurrence") or {}).get("kind") == "once":
+            job["enabled"] = False   # one-shot: done, kept in the list until deleted
+        changed = True
+    if changed:
+        save_schedules(schedules)
+
+
+def _schedule_loop():
+    """Daemon thread started once in __main__ (see bottom of file) — distinct from the
+    per-run fleet scheduler in _start_fleet, this one lives for the app's whole lifetime."""
+    while True:
+        try:
+            _run_due_schedules()
+        except Exception as e:
+            print(f"[schedule] loop error: {e}")
+        time.sleep(20)
+
+
 # ─── Routes ──────────────────────────────────────────────────────
 
 @app.route('/')
@@ -361,6 +514,139 @@ def delete_account(username):
 
     accounts = [a for a in accounts if not matches(a)]
     save_accounts(accounts)
+    return jsonify({"status": "deleted"})
+
+
+@app.route('/api/schedules', methods=['POST'])
+def create_schedule():
+    """Create a scheduled job — the SAME payload /launch-batch (slot) or /launch-crash-sweep
+    (crash) expects, plus a `recurrence`. Slot jobs are multipart (excel file +
+    brand/region/accounts JSON/tests JSON/headless/recurrence JSON — same fields the manual
+    batch upload sends, the excel is copied into SCHEDULED_UPLOADS_DIR so it survives past
+    this request); crash jobs are a plain JSON body (picks/username/password/brand/region/
+    headless/live/bet/target/recurrence). `recurrence`: {"kind":"once","run_at":"<ISO
+    datetime>"} or {"kind":"daily","time_of_day":"HH:MM","days_of_week":[0-6] (optional,
+    default every day, 0=Monday)}. Validated up front so a broken schedule is rejected at
+    creation, not silently every day it tries to fire."""
+    job_id = f"sch_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:6]}"
+    is_multipart = bool(request.content_type) and request.content_type.startswith("multipart/form-data")
+
+    if is_multipart:
+        job_type = "slot"
+        f = request.files.get('excel')
+        if not f:
+            return jsonify({"status": "error", "message": "No Excel file uploaded"}), 400
+        brand = request.form.get('brand', 'betway')
+        region = request.form.get('region', 'ZA')
+        headless = request.form.get('headless') == 'true'
+        try:
+            accounts = json.loads(request.form.get('accounts') or '[]')
+        except ValueError:
+            accounts = []
+        accounts = [a for a in accounts if a.get("username") and a.get("password")]
+        if not accounts:
+            return jsonify({"status": "error",
+                            "message": "Select at least one worker account"}), 400
+        try:
+            tests = json.loads(request.form.get('tests') or '["dsc"]') or ["dsc"]
+        except ValueError:
+            tests = ["dsc"]
+        try:
+            recurrence = json.loads(request.form.get('recurrence') or '{}')
+        except ValueError:
+            recurrence = {}
+        fname = (f.filename or "").lower()
+        if fname.endswith(".xls") and not fname.endswith(".xlsx"):
+            return jsonify({"status": "error",
+                            "message": "Legacy .xls isn't supported — save the sheet as .xlsx"}), 400
+        input_path = os.path.join(SCHEDULED_UPLOADS_DIR, f"{job_id}_input.xlsx")
+        if fname.endswith(".csv"):
+            import pandas as pd
+            csv_path = os.path.join(SCHEDULED_UPLOADS_DIR, f"{job_id}_input.csv")
+            f.save(csv_path)
+            try:
+                pd.read_csv(csv_path).to_excel(input_path, index=False)
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Could not read the CSV: {e}"}), 400
+        else:
+            f.save(input_path)
+        payload = {"input_path": input_path, "brand": brand, "region": region,
+                   "accounts": accounts, "headless": headless, "tests": tests}
+    else:
+        data = request.get_json(force=True) or {}
+        job_type = "crash"
+        username, password = data.get('username', ''), data.get('password', '')
+        picks = [p for p in (data.get('picks') or []) if (p or {}).get('name')]
+        if not username or not password:
+            return jsonify({"status": "error", "message": "Select an account first"}), 400
+        if not picks:
+            return jsonify({"status": "error", "message": "No crash games selected"}), 400
+        recurrence = data.get('recurrence') or {}
+        payload = {"picks": picks, "username": username, "password": password,
+                   "brand": (data.get('brand') or 'betway').lower(),
+                   "region": (data.get('region') or 'ZA').upper(),
+                   "headless": bool(data.get('headless')), "live": bool(data.get('live')),
+                   "bet": data.get('bet'), "target": data.get('target')}
+
+    kind = recurrence.get("kind")
+    if kind == "once":
+        if not recurrence.get("run_at"):
+            return jsonify({"status": "error", "message": "Provide a run_at date/time"}), 400
+    elif kind == "daily":
+        if not recurrence.get("time_of_day"):
+            return jsonify({"status": "error", "message": "Provide a time_of_day (HH:MM)"}), 400
+    else:
+        return jsonify({"status": "error",
+                        "message": "recurrence.kind must be 'once' or 'daily'"}), 400
+
+    job = {"id": job_id, "type": job_type, "enabled": True, "recurrence": recurrence,
+           "payload": payload, "created_at": datetime.now().isoformat(),
+           "last_run_at": None, "last_run_id": None, "last_status": None}
+    schedules = load_schedules()
+    schedules.append(job)
+    save_schedules(schedules)
+    return jsonify({"status": "created", "job": job})
+
+
+@app.route('/api/schedules', methods=['GET'])
+def list_schedules():
+    """Every scheduled job (slot + crash) — feeds the dashboard's Upcoming Schedules list."""
+    return jsonify(load_schedules())
+
+
+@app.route('/api/schedules/<job_id>', methods=['PATCH'])
+def update_schedule(job_id):
+    """Partial update — primarily {"enabled": bool} to pause/resume a job, but also accepts a
+    replacement {"recurrence": {...}}."""
+    data = request.get_json(force=True) or {}
+    schedules = load_schedules()
+    job = next((j for j in schedules if j.get("id") == job_id), None)
+    if not job:
+        return jsonify({"status": "error", "message": "Schedule not found"}), 404
+    if "enabled" in data:
+        job["enabled"] = bool(data["enabled"])
+    if isinstance(data.get("recurrence"), dict):
+        job["recurrence"] = data["recurrence"]
+    save_schedules(schedules)
+    return jsonify({"status": "updated", "job": job})
+
+
+@app.route('/api/schedules/<job_id>', methods=['DELETE'])
+def delete_schedule(job_id):
+    """Remove a scheduled job; for a slot job also deletes its persisted upload copy."""
+    schedules = load_schedules()
+    job = next((j for j in schedules if j.get("id") == job_id), None)
+    if not job:
+        return jsonify({"status": "error", "message": "Schedule not found"}), 404
+    if job.get("type") == "slot":
+        input_path = (job.get("payload") or {}).get("input_path")
+        if input_path and os.path.exists(input_path):
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
+    schedules = [j for j in schedules if j.get("id") != job_id]
+    save_schedules(schedules)
     return jsonify({"status": "deleted"})
 
 
@@ -709,7 +995,7 @@ def validate_tlogs():
     path = os.path.join(RUNS_DIR, name)
     if not name.endswith('_records.jsonl') or not os.path.exists(path):
         return jsonify({"status": "error", "message": "Records file not found"}), 400
-    cmd = [sys.executable, "-u", "tlogs_validate.py", "--records", path]
+    cmd = _worker_cmd("tlogs_validate.py", "--records", path)
     if data.get('headed'):
         cmd.append("--headed")
     CURRENT_RUN = {"game": f"Tlogs validation · {name}", "run_id": name,
@@ -774,17 +1060,18 @@ def launch():
         # LIVE ONLY — the dry-run path was deliberately removed from this card (2026-07-29,
         # explicit request) so every run through it places a real wager, gated by
         # crash_auto.py --live + config_env.MAX_STAKE, PLUS the dashboard's own confirmation
-        # checkbox. Stake is re-validated server-side here too — never trust a client-side
-        # check alone for something that spends real money. Crash Sweep is UNAFFECTED — it
-        # stays dry-run-only (see /launch-crash-sweep's own docstring on why).
+        # checkbox. Stake is OPTIONAL (2026-08-10): crash_auto.py resolves each game's own
+        # minimum bet automatically (catalog minBetAmount, or in-game floor detection for a
+        # raw URL with no catalog lookup) — a typed value here is only an override/cap, still
+        # re-validated server-side since it spends real money.
         import config_env
         live_target = (data.get('target') or '').strip()
         try:
             live_bet = float(data.get('bet') or 0)
         except (TypeError, ValueError):
             live_bet = 0
-        if live_bet <= 0:
-            return jsonify({"status": "error", "message": "Enter a positive stake amount"}), 400
+        if live_bet < 0:
+            return jsonify({"status": "error", "message": "Stake override cannot be negative"}), 400
         if live_bet > config_env.MAX_STAKE:
             return jsonify({"status": "error",
                             "message": f"Stake {live_bet:g} exceeds the safety cap "
@@ -793,7 +1080,7 @@ def launch():
         run_id = f"{started:%Y%m%d_%H%M%S}_crash_{_slug(label)}"
         run_dir = os.path.join(RUNS_DIR, run_id)
         os.makedirs(run_dir, exist_ok=True)
-        cmd = [sys.executable, "-u", "crash_auto.py"]
+        cmd = _worker_cmd("crash_auto.py")
         if crash_url:
             cmd.append(crash_url)
         elif game_name:
@@ -805,7 +1092,9 @@ def launch():
         else:
             return jsonify({"status": "error",
                             "message": "Provide a crash launch URL or a game name"}), 400
-        cmd += ["--live", "--bet", str(live_bet)]
+        cmd += ["--live"]
+        if live_bet > 0:
+            cmd += ["--bet", str(live_bet)]
         if live_target:
             cmd += ["--target", live_target]
         cmd += ["--run-dir", run_dir, "--brand", brand, "--region", region]
@@ -822,13 +1111,13 @@ def launch():
         run_dir = os.path.join(RUNS_DIR, run_id)
         os.makedirs(run_dir, exist_ok=True)
 
-        cmd = [sys.executable, "-u", "test_spin_button.py",
+        cmd = _worker_cmd("test_spin_button.py",
                "--game", game_name,
                "--username", username,
                "--password", password,
                "--brand", brand,
                "--region", region,
-               "--run-dir", run_dir]
+               "--run-dir", run_dir)
         if is_mobile:
             cmd.append("--mobile")
         if is_headless:
@@ -870,60 +1159,30 @@ def launch():
     return jsonify({"status": "started"})
 
 
-@app.route('/launch-batch', methods=['POST'])
-def launch_batch():
-    """Batch DSC sweep: an uploaded Excel of games, split round-robin across one browser
-    worker per selected account. All workers fill ONE shared report (file-locked) seeded
-    from the input sheet, so row order is preserved and a partial sweep is readable.
-    Multipart form: excel (file), brand, region, accounts (JSON [{username,password}]),
-    tests (JSON list, default ["dsc"])."""
+def _do_launch_batch(input_path, brand, region, accounts, headless, tests):
+    """Core of a slot batch launch: shard `input_path` across `accounts`, seed a shared DSC
+    report, spawn one worker per shard, register the run. Factored out of the /launch-batch
+    route (2026-08-10) so the scheduler can trigger the EXACT same launch a manual click does
+    — same validation, same worker commands — just called with a stored payload instead of a
+    fresh request. `input_path` must already point at a saved .xlsx (the route saves the
+    upload before calling this; the scheduler points at its persisted per-job copy).
+    Returns (payload_dict, http_status) — same shape the route used to jsonify directly."""
     global CURRENT_RUN
-
-    f = request.files.get('excel')
-    if not f:
-        return jsonify({"status": "error", "message": "No Excel file uploaded"}), 400
-    brand = request.form.get('brand', 'betway')
-    region = request.form.get('region', 'ZA')
-    is_headless = request.form.get('headless') == 'true'
-    try:
-        accounts = json.loads(request.form.get('accounts') or '[]')
-    except ValueError:
-        accounts = []
-    accounts = [a for a in accounts if a.get("username") and a.get("password")]
+    accounts = [a for a in (accounts or []) if a.get("username") and a.get("password")]
     if not accounts:
-        return jsonify({"status": "error",
-                        "message": "Select at least one worker account"}), 400
-    try:
-        tests = json.loads(request.form.get('tests') or '["dsc"]') or ["dsc"]
-    except ValueError:
-        tests = ["dsc"]
+        return {"status": "error", "message": "Select at least one worker account"}, 400
+    tests = tests or ["dsc"]
 
     started = datetime.now()
     batch_id = f"{started:%Y%m%d_%H%M%S}_DSC"
     batch_dir = os.path.join(RUNS_DIR, batch_id)
     os.makedirs(batch_dir, exist_ok=True)
-    input_path = os.path.join(batch_dir, "input.xlsx")
-    fname = (f.filename or "").lower()
-    if fname.endswith(".csv"):
-        # The dashboard file picker accepts .csv but openpyxl only reads xlsx — convert.
-        import pandas as pd
-        csv_path = os.path.join(batch_dir, "input.csv")
-        f.save(csv_path)
-        try:
-            pd.read_csv(csv_path).to_excel(input_path, index=False)
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Could not read the CSV: {e}"}), 400
-    elif fname.endswith(".xls") and not fname.endswith(".xlsx"):
-        return jsonify({"status": "error",
-                        "message": "Legacy .xls isn't supported — save the sheet as .xlsx"}), 400
-    else:
-        f.save(input_path)
 
     from modules import dsc_report
     try:
         shards, total = dsc_report.shard_excel(input_path, batch_dir, len(accounts))
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Could not read the sheet: {e}"}), 400
+        return {"status": "error", "message": f"Could not read the sheet: {e}"}, 400
 
     report = None
     if "dsc" in tests:
@@ -935,22 +1194,22 @@ def launch_batch():
 
     cmds = []
     for k, (shard, acc) in enumerate(zip(shards, accounts), 1):
-        cmd = [sys.executable, "-u", "test_spin_button.py",
+        cmd = _worker_cmd("test_spin_button.py",
                "--excel", shard,
                "--username", acc["username"],
                "--password", acc["password"],
                "--brand", brand,
                "--region", region,
                "--run-dir", os.path.join(batch_dir, f"w{k}"),
-               "--tests", ",".join(str(t) for t in tests)]
-        if is_headless:
+               "--tests", ",".join(str(t) for t in tests))
+        if headless:
             cmd.append("--headless")
         if report:
             cmd.extend(["--dsc-report", report])
         # Cascade the worker windows (~36px steps) so every title bar stays clickable —
         # users resize/snap stacked windows to see them, and a RESIZE breaks coordinates.
         env = os.environ.copy()
-        env["MELON_WINDOW_POS"] = f"{36 * (k - 1)},{36 * (k - 1)}"
+        env["GAMEGUARD_WINDOW_POS"] = f"{36 * (k - 1)},{36 * (k - 1)}"
         cmds.append((f"W{k}", cmd, env))
 
     batch = {"report": report, "total": total, "workers": len(cmds), "run_id": batch_id}
@@ -973,9 +1232,62 @@ def launch_batch():
 
     _start_workers(cmds, batch=batch)
 
-    return jsonify({"status": "started", "total": total, "workers": len(cmds),
-                    "run_id": batch_id,
-                    "report": os.path.basename(report) if report else None})
+    return {"status": "started", "total": total, "workers": len(cmds),
+            "run_id": batch_id, "report": os.path.basename(report) if report else None}, 200
+
+
+@app.route('/launch-batch', methods=['POST'])
+def launch_batch():
+    """Batch DSC sweep: an uploaded Excel of games, split round-robin across one browser
+    worker per selected account. All workers fill ONE shared report (file-locked) seeded
+    from the input sheet, so row order is preserved and a partial sweep is readable.
+    Multipart form: excel (file), brand, region, accounts (JSON [{username,password}]),
+    tests (JSON list, default ["dsc"]). Thin wrapper around _do_launch_batch — this route's
+    only job is turning the multipart upload into a saved input_path."""
+    f = request.files.get('excel')
+    if not f:
+        return jsonify({"status": "error", "message": "No Excel file uploaded"}), 400
+    brand = request.form.get('brand', 'betway')
+    region = request.form.get('region', 'ZA')
+    is_headless = request.form.get('headless') == 'true'
+    try:
+        accounts = json.loads(request.form.get('accounts') or '[]')
+    except ValueError:
+        accounts = []
+    accounts = [a for a in accounts if a.get("username") and a.get("password")]
+    if not accounts:
+        return jsonify({"status": "error",
+                        "message": "Select at least one worker account"}), 400
+    try:
+        tests = json.loads(request.form.get('tests') or '["dsc"]') or ["dsc"]
+    except ValueError:
+        tests = ["dsc"]
+
+    fname = (f.filename or "").lower()
+    if fname.endswith(".xls") and not fname.endswith(".xlsx"):
+        return jsonify({"status": "error",
+                        "message": "Legacy .xls isn't supported — save the sheet as .xlsx"}), 400
+    # Staged outside any particular run's own folder — _do_launch_batch mints its OWN
+    # batch_id/run folder (shared with the scheduler, which calls it with a persisted upload
+    # of its own), so the raw upload has nowhere fixed to land ahead of that.
+    uploads_dir = os.path.join(RUNS_DIR, "_uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    input_path = os.path.join(uploads_dir, f"{stamp}_input.xlsx")
+    if fname.endswith(".csv"):
+        # The dashboard file picker accepts .csv but openpyxl only reads xlsx — convert.
+        import pandas as pd
+        csv_path = os.path.join(uploads_dir, f"{stamp}_input.csv")
+        f.save(csv_path)
+        try:
+            pd.read_csv(csv_path).to_excel(input_path, index=False)
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Could not read the CSV: {e}"}), 400
+    else:
+        f.save(input_path)
+
+    payload, status = _do_launch_batch(input_path, brand, region, accounts, is_headless, tests)
+    return jsonify(payload), status
 
 
 def _sweep_targets(data):
@@ -1084,16 +1396,16 @@ def launch_sweep():
         total_games += n
         for k, (shard, acc) in enumerate(zip(shards, accts), 1):
             widx += 1
-            cmd = [sys.executable, "-u", "test_spin_button.py", "--excel", shard,
+            cmd = _worker_cmd("test_spin_button.py", "--excel", shard,
                    "--username", acc["username"], "--password", acc["password"],
                    "--brand", b, "--region", r,
                    "--run-dir", os.path.join(gdir, f"w{k}"),
-                   "--tests", "dsc", "--dsc-report", report]
+                   "--tests", "dsc", "--dsc-report", report)
             if is_headless:
                 cmd.append("--headless")
             env = os.environ.copy()
             step = 36 * ((widx - 1) % parallel)     # cascade within a wave; title bars stay clickable
-            env["MELON_WINDOW_POS"] = f"{step},{step}"
+            env["GAMEGUARD_WINDOW_POS"] = f"{step},{step}"
             worker_specs.append({"label": f"{r}·W{k}", "cmd": cmd, "env": env})
         group_meta.append({"brand": b, "region": r, "report": report, "picks": picks,
                            "record": not do_not_record, "run_id": batch_id})
@@ -1154,52 +1466,49 @@ def api_crash_sweep_plan():
     return jsonify({"status": "ok", "games": games, "total": len(games)})
 
 
-@app.route('/launch-crash-sweep', methods=['POST'])
-def launch_crash_sweep():
-    """Batch-run a set of discovered crash titles. Dry-run by default; live=true places a REAL
-    wager on EVERY selected game, one after another (2026-07-29, explicit request — "whatever I
-    select in discover games should be considered in live execution"). Stake is re-validated
-    server-side against config_env.MAX_STAKE per game — the same cap the single-game Live card
-    enforces, just applied N times here, and total exposure (games x stake) is surfaced in the
-    response/label so it's never a silent multiply. Runs ONE AT A TIME regardless of dry-run or
-    live — max_parallel is hard-capped to 1 here on purpose: every game in the batch
-    authenticates with the SAME account, and a real concurrent second login on one account is
-    exactly the 'session held by another tab' disconnect crash_auto.py's auto_handle_crash_startup
-    already has to detect and abort on (see modules/auth_handler.py's sessionTrackingToken note).
-    That risk is WORSE, not better, in live mode — a dropped session mid-bet is a real open
-    position, not just a wasted observation — so the one-at-a-time cap is non-negotiable here.
-    Spreading a crash sweep across MULTIPLE accounts in parallel (like the slot Auto Sweep does)
-    is future work — not built here, so don't silently pretend a 'parallel' knob exists.
-    JSON body: picks[{id,name,provider}], username, password, brand, region, headless,
-    live, bet, target."""
+def _do_launch_crash_sweep(picks, username, password, brand, region, headless, live, bet, target):
+    """Core of a crash sweep launch. Factored out of the /launch-crash-sweep route
+    (2026-08-10) so the scheduler can trigger the EXACT same launch a manual click does —
+    same validation (account required, MAX_STAKE cap), same one-at-a-time worker fleet.
+    Dry-run by default; live=True places a REAL wager on EVERY selected game, one after
+    another (2026-07-29, explicit request — "whatever I select in discover games should be
+    considered in live execution"). Stake is re-validated against config_env.MAX_STAKE per
+    game — the same cap the single-game Live card enforces, just applied N times here, and
+    total exposure is surfaced in the response so it's never a silent multiply. Runs ONE AT A
+    TIME regardless of dry-run or live — max_parallel is hard-capped to 1 on purpose: every
+    game in the batch authenticates with the SAME account, and a real concurrent second login
+    on one account is exactly the 'session held by another tab' disconnect crash_auto.py's
+    auto_handle_crash_startup already has to detect and abort on (see
+    modules/auth_handler.py's sessionTrackingToken note). That risk is WORSE, not better, in
+    live mode — a dropped session mid-bet is a real open position, not just a wasted
+    observation — so the one-at-a-time cap is non-negotiable here. Spreading a crash sweep
+    across MULTIPLE accounts in parallel (like the slot Auto Sweep does) is future work — not
+    built here, so don't silently pretend a 'parallel' knob exists.
+    Stake is OPTIONAL: each game auto-wagers its OWN catalog minBetAmount (from
+    `picks`, see /api/crash-sweep-plan -> list_crash_games) — `bet`, if given, overrides that
+    for EVERY selected game instead (still capped by MAX_STAKE). `picks`:
+    [{id,name,provider,minBetAmount}]. Returns (payload_dict, http_status)."""
     global CURRENT_RUN
-    data = request.get_json(force=True) or {}
-    picks = data.get('picks') or []
-    username, password = data.get('username', ''), data.get('password', '')
-    brand = (data.get('brand') or 'betway').lower()
-    region = (data.get('region') or 'ZA').upper()
-    is_headless = bool(data.get('headless'))
     if not username or not password:
-        return jsonify({"status": "error", "message": "Select an account first"}), 400
-    picks = [p for p in picks if (p or {}).get('name')]
+        return {"status": "error", "message": "Select an account first"}, 400
+    picks = [p for p in (picks or []) if (p or {}).get('name')]
     if not picks:
-        return jsonify({"status": "error", "message": "No crash games selected"}), 400
+        return {"status": "error", "message": "No crash games selected"}, 400
 
-    is_live = bool(data.get('live'))
-    live_bet, live_target = 0, (data.get('target') or '').strip()
+    is_live = bool(live)
+    live_bet_override, live_target = 0, (target or '').strip()
     if is_live:
         import config_env
         try:
-            live_bet = float(data.get('bet') or 0)
+            live_bet_override = float(bet or 0)
         except (TypeError, ValueError):
-            live_bet = 0
-        if live_bet <= 0:
-            return jsonify({"status": "error", "message": "Live mode needs a positive stake amount"}), 400
-        if live_bet > config_env.MAX_STAKE:
-            return jsonify({"status": "error",
-                            "message": f"Stake {live_bet:g} exceeds the safety cap "
-                                       f"{config_env.MAX_STAKE:g}"}), 400
+            live_bet_override = 0
+        if live_bet_override > 0 and live_bet_override > config_env.MAX_STAKE:
+            return {"status": "error",
+                    "message": f"Stake {live_bet_override:g} exceeds the safety cap "
+                               f"{config_env.MAX_STAKE:g}"}, 400
 
+    is_headless = bool(headless)
     started = datetime.now()
     batch_id = f"{started:%Y%m%d_%H%M%S}_crash_sweep"
     batch_dir = os.path.join(RUNS_DIR, batch_id)
@@ -1208,21 +1517,27 @@ def launch_crash_sweep():
     worker_specs = []
     for i, p in enumerate(picks, 1):
         name = p["name"]
+        game_min_bet = p.get("minBetAmount")
         gdir = os.path.join(batch_dir, f"{i:02d}_{_slug(name)}")
         os.makedirs(gdir, exist_ok=True)
-        # Persist the discovery-time pick (id/name/provider) alongside the run — crash_auto.py's
-        # own results.json has no provider field, so the Excel exporter (_crash_report_rows)
-        # needs this to fill that column without a second live catalog call.
+        # Persist the discovery-time pick (id/name/provider/minBetAmount) alongside the run —
+        # crash_auto.py's own results.json has no provider field, so the Excel exporter
+        # (_crash_report_rows) needs this to fill that column without a second live catalog call.
         try:
             with open(os.path.join(gdir, "pick.json"), "w", encoding="utf-8") as fh:
-                json.dump({"id": p.get("id"), "name": name, "provider": p.get("provider")}, fh)
+                json.dump({"id": p.get("id"), "name": name, "provider": p.get("provider"),
+                          "minBetAmount": game_min_bet}, fh)
         except Exception as e:
             print(f"[crash-sweep] pick.json write failed for {name}: {e}")
-        cmd = [sys.executable, "-u", "crash_auto.py", "--game", name,
+        cmd = _worker_cmd("crash_auto.py", "--game", name,
                "--username", username, "--password", password,
-               "--brand", brand, "--region", region]
+               "--brand", brand, "--region", region)
         if is_live:
-            cmd += ["--live", "--bet", str(live_bet)]
+            cmd += ["--live"]
+            if live_bet_override > 0:
+                cmd += ["--bet", str(live_bet_override)]
+            elif game_min_bet not in (None, ""):
+                cmd += ["--min-bet", str(game_min_bet)]
             if live_target:
                 cmd += ["--target", live_target]
         else:
@@ -1237,7 +1552,21 @@ def launch_crash_sweep():
         worker_specs.append({"label": _slug(name, 16), "cmd": cmd, "env": None})
 
     total_games = len(worker_specs)
-    mode_label = f"LIVE (stake={live_bet:g} x {total_games} = {live_bet*total_games:g} exposure)" if is_live else "dry-run"
+    total_exposure = None
+    if is_live:
+        if live_bet_override > 0:
+            mode_label = f"LIVE (stake={live_bet_override:g} x {total_games} = " \
+                        f"{live_bet_override*total_games:g} exposure)"
+            total_exposure = live_bet_override * total_games
+        else:
+            known = [v for v in (_parse_money(p.get("minBetAmount")) for p in picks) if v is not None]
+            if len(known) == total_games:
+                total_exposure = sum(known)
+                mode_label = f"LIVE (each game's own minimum bet = {total_exposure:g} exposure)"
+            else:
+                mode_label = "LIVE (each game's own minimum bet)"
+    else:
+        mode_label = "dry-run"
     CURRENT_RUN = {"game": f"Crash sweep · {total_games} games · {mode_label} · {brand} {region}",
                    "run_id": batch_id, "start_time": started.isoformat(), "status": "running",
                    "batch": {"report": None, "total": total_games, "workers": total_games,
@@ -1260,8 +1589,22 @@ def launch_crash_sweep():
     # casino backend's session lock for this account has time to release before the next game
     # requests a launch — see _start_fleet's cooldown docstring for the evidence behind this.
     _start_fleet(worker_specs, 1, [], cooldown=20)
-    return jsonify({"status": "started", "total": total_games, "run_id": batch_id,
-                    "live": is_live, "total_exposure": (live_bet * total_games) if is_live else 0})
+    return {"status": "started", "total": total_games, "run_id": batch_id,
+            "live": is_live, "total_exposure": total_exposure if is_live else 0}, 200
+
+
+@app.route('/launch-crash-sweep', methods=['POST'])
+def launch_crash_sweep():
+    """Batch-run a set of discovered crash titles — see _do_launch_crash_sweep for the full
+    behavior/safety docstring. JSON body: picks[{id,name,provider,minBetAmount}], username,
+    password, brand, region, headless, live, bet, target."""
+    data = request.get_json(force=True) or {}
+    payload, status = _do_launch_crash_sweep(
+        picks=data.get('picks'), username=data.get('username', ''), password=data.get('password', ''),
+        brand=(data.get('brand') or 'betway').lower(), region=(data.get('region') or 'ZA').upper(),
+        headless=bool(data.get('headless')), live=bool(data.get('live')),
+        bet=data.get('bet'), target=data.get('target'))
+    return jsonify(payload), status
 
 
 @app.route('/api/history')
@@ -1305,7 +1648,7 @@ def stream():
                 # SSE keep-alive comment so proxies/browsers don't drop an idle stream.
                 yield ": ping\n\n"
                 idle = 0.0
-        yield "data: [MELON_STREAM_END]\n\n"
+        yield "data: [GAMEGUARD_STREAM_END]\n\n"
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -1323,4 +1666,17 @@ def stop():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=int(os.environ.get("MELON_PORT", 5000)), threaded=True)
+    # GAMEGUARD_RELOADER=0 (set by the QA "Launch GameGuard.bat") runs a single plain process —
+    # no live-reload-on-save, but also no second watcher process for a non-developer to
+    # accidentally leave orphaned after closing the window. Default (unset) keeps today's
+    # developer behavior unchanged: debug=True's reloader re-execs this module in TWO
+    # processes, a watcher (never serves — WERKZEUG_RUN_MAIN unset) and the actual serving
+    # child (WERKZEUG_RUN_MAIN="true"). Gate the background thread so it starts EXACTLY once,
+    # in whichever process actually serves: the single process when the reloader is off, else
+    # only the flagged child — starting it in the watcher too would spawn a second, independent
+    # scheduler racing to launch the same due jobs.
+    use_reloader = os.environ.get("GAMEGUARD_RELOADER", "1") != "0"
+    if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        threading.Thread(target=_schedule_loop, daemon=True).start()
+    app.run(debug=True, port=int(os.environ.get("GAMEGUARD_PORT", 5000)), threaded=True,
+            use_reloader=use_reloader)

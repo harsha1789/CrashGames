@@ -19,14 +19,14 @@ Three pieces:
               slot_agent / slot_spin, since they all share the same page object.
 
 The feed div is click-transparent (pointer-events: none) and uses its own id —
-NOT the .melon-highlight class — so clear_highlights() never wipes it.
+NOT the .gameguard-highlight class — so clear_highlights() never wipes it.
 """
 
 import time
 import asyncio
 from collections import deque
 
-FEED_ID = "melon-log-feed"
+FEED_ID = "gameguard-log-feed"
 # Applied only WHILE a screenshot is captured (Playwright screenshot(style=...)).
 HIDE_FEED_CSS = "#%s { visibility: hidden !important; }" % FEED_ID
 

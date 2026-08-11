@@ -39,8 +39,18 @@ from playwright.async_api import async_playwright
 import config_env   # single source of truth for live VIEWPORT_* + coordinate clamping
 from modules import log_overlay   # in-page log feed on the game window (hidden from screenshots)
 
+
+def _base_dir():
+    """Real folder holding this script (or, in a frozen PyInstaller build, this .exe) —
+    __file__ resolves inside the bundle when frozen, not the exe's actual location, so
+    os.path.dirname(sys.executable) is the correct base there. Unchanged from source."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 # --- Configuration ---
-_keys_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api_keys.json")
+_keys_file = os.path.join(_base_dir(), "api_keys.json")
 _keys_data = json.load(open(_keys_file)) if os.path.exists(_keys_file) else {}
 # Single-key mode: prefer single_key, fall back to key_list for compatibility.
 _single = _keys_data.get("single_key")
@@ -57,7 +67,7 @@ AUTOPLAY_ONLY = False
 # check EXCEPT opening + examining the menu. If AUTOPLAY_ONLY is also True, autoplay wins
 # (its  fast path returns first). Set one at a time; both False to run the full suite.
 MENU_ONLY = False
-SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
+SCREENSHOT_DIR = os.path.join(_base_dir(), "screenshots")
 # Per-run artifacts. When the UI (or --run-dir) provides a run folder, SCREENSHOT_DIR is
 # repointed into it and these hold the run identity so _emit_report / video can use them.
 # Unset => legacy flat behavior (screenshots/, recordings/, test_results.json).
@@ -382,7 +392,7 @@ async def draw_highlight(page, xmin, ymin, xmax, ymax, text, color="lime"):
     try:
         await page.evaluate('''([x, y, w, h, text, color]) => {
             const el = document.createElement('div');
-            el.className = 'melon-highlight';
+            el.className = 'gameguard-highlight';
             el.style.position = 'absolute';
             el.style.left = x + 'px';
             el.style.top = y + 'px';
@@ -533,7 +543,7 @@ async def flash_target(page, center, label, color="cyan", hold=0.7, radius=46):
 async def clear_highlights(page):
     try:
         await page.evaluate('''() => {
-            const els = document.querySelectorAll('.melon-highlight');
+            const els = document.querySelectorAll('.gameguard-highlight');
             els.forEach(el => el.remove());
         }''')
     except Exception:
@@ -680,8 +690,35 @@ Normalize box_2d to 0-1000."""
 # ═══════════════════════════════════════════════════════════════════
 #   MAIN TEST FLOW
 # ═══════════════════════════════════════════════════════════════════
+def _prune_passed_screenshots(results):
+    """Evidence screenshots are kept only for FAILED steps. By the time _emit_report calls this,
+    every TestResult.passed is already final — this is the one choke point both the slot suite
+    (this module's own run_tests/batch exit paths) and crash_auto.py (via T._emit_report) funnel
+    every result list through before results.json is written, so it prunes both verticals from
+    one place instead of trying to predict pass/fail before each screenshot was ever taken.
+
+    Only `passed is False` keeps its screenshot (on disk and in the report); passed (True) and
+    skipped/neutral (None) steps lose theirs — deleted from SCREENSHOT_DIR and cleared from the
+    result so the report shows no image for them. A filename another FAILED result still needs
+    is never deleted, and ELEMENTS_SHOT (the annotated all-controls hero shot atop the report —
+    the "detect-controls screenshot" itself, not per-step evidence) is never touched."""
+    keep_files = {r.screenshot for r in results if r.passed is False and r.screenshot}
+    for r in results:
+        if r.passed is False or not r.screenshot:
+            continue
+        if r.screenshot not in keep_files and r.screenshot != ELEMENTS_SHOT:
+            path = _ss(r.screenshot)
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError:
+                pass
+        r.screenshot = ""   # never reference a screenshot from a passed/skipped step's report row
+
+
 def _emit_report(results):
     """Print the summary, write results.json, and emit the REPORTPAYLOAD block the UI parses."""
+    _prune_passed_screenshots(results)
     print(f"\n{'='*70}\n  TEST RESULTS SUMMARY\n{'='*70}")
     passed = sum(1 for r in results if r.passed is True)
     failed = sum(1 for r in results if r.passed is False)
@@ -713,7 +750,7 @@ def _emit_report(results):
     payload = {"run_id": RUN_ID, "summary": summary, "results": items}
     # Always write the top-level latest file (so /api/results keeps working) and, when a run
     # folder is set, a copy inside it.
-    targets = [os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_results.json")]
+    targets = [os.path.join(_base_dir(), "test_results.json")]
     if RUN_DIR:
         targets.append(os.path.join(RUN_DIR, "results.json"))
     for results_file in targets:
@@ -742,7 +779,7 @@ async def run_tests(url: str, spin_center_override: tuple = None, mobile: bool =
     
     # Video goes into the run folder when one is set, else the legacy flat recordings/ dir.
     recordings_dir = os.path.join(RUN_DIR, "video") if RUN_DIR else \
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
+        os.path.join(_base_dir(), "recordings")
     os.makedirs(recordings_dir, exist_ok=True)
 
     async with async_playwright() as p:
@@ -775,7 +812,7 @@ async def run_tests(url: str, spin_center_override: tuple = None, mobile: bool =
             # Parallel workers get a small cascade offset (set by app.py) so every window's
             # title bar stays reachable without dragging/resizing — a mid-run RESIZE is what
             # breaks coordinates (position is harmless: clicks are viewport-relative).
-            _win_pos = os.environ.get("MELON_WINDOW_POS", "0,0")
+            _win_pos = os.environ.get("GAMEGUARD_WINDOW_POS", "0,0")
             browser = await p.chromium.launch(
                 headless=headless,
                 args=["--window-size=1920,1080", f"--window-position={_win_pos}"] + _no_throttle)
@@ -2002,8 +2039,22 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, default="scripted", choices=["agentic", "scripted"],
                         help="scripted (default): deterministic TEST 3-10 + agentic autoplay/menu (TEST 9). "
                              "agentic: experimental full-agent-control brain (slower, less reliable).")
+    parser.add_argument("--install-browser", action="store_true",
+                        help="One-time setup: download the Chromium build Playwright drives, "
+                             "using the copy of the playwright package bundled into this exe — "
+                             "no separate Python/pip install needed. Run once, then exit "
+                             "(ignores every other argument). Needs internet access.")
 
     args = parser.parse_args()
+
+    if args.install_browser:
+        # Frozen builds have no `python -m playwright install` available (no separate Python
+        # on the QA machine) — this calls the SAME installer the bundled playwright package
+        # ships, so Setup.bat can trigger it from the compiled exe alone.
+        from playwright.__main__ import main as _playwright_main
+        sys.argv = ["playwright", "install", "chromium"]
+        sys.exit(_playwright_main())
+
     MODE = args.mode
 
     if args.tests.strip():
@@ -2045,7 +2096,7 @@ if __name__ == "__main__":
     if DSC_MODE:
         from modules import dsc_report
         DSC_REPORT_PATH = os.path.abspath(args.dsc_report) if args.dsc_report else \
-            dsc_report.default_report_path(os.path.dirname(os.path.abspath(__file__)))
+            dsc_report.default_report_path(_base_dir())
         # Batch sweeps: the report is a copy of the INPUT sheet (same format, result columns
         # cleared) and each game's row is filled in place as its run completes.
         dsc_report.ensure_report(DSC_REPORT_PATH, seed_from=args.excel or None)
@@ -2142,7 +2193,7 @@ if __name__ == "__main__":
         DSC_BATCH_PARENT = None
         if DSC_MODE and args.excel:
             DSC_BATCH_PARENT = RUN_DIR or os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "runs",
+                _base_dir(), "runs",
                 f"{datetime.now():%Y%m%d_%H%M%S}_DSC")
 
         for i, g in enumerate(games_queue, 1):
@@ -2215,7 +2266,7 @@ if __name__ == "__main__":
                     os.makedirs(os.path.join(RUN_DIR, sub), exist_ok=True)
                 # Evidence relative to runs/ — parallel workers each have a w<k>/ folder,
                 # so a bare basename like "001_Game" wouldn't say WHICH worker ran it.
-                _runs_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs")
+                _runs_root = os.path.join(_base_dir(), "runs")
                 try:
                     dsc_meta["evidence"] = os.path.relpath(RUN_DIR, _runs_root)
                 except ValueError:

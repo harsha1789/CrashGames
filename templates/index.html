@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Melon — Slot Testing Engine</title>
+  <title>GameGuard — Canvas Game Testing Engine</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <!-- Vendored locally (static/xlsx.full.min.js, SheetJS 0.20.3): the CDN copy is unreachable
        off-VPN / on filtered networks, which killed Excel import with "XLSX is not defined". -->
@@ -26,8 +26,8 @@
     <!-- Idle hero: brand · headline · typewriter · kinetic sculpture -->
     <div class="hero" id="hero">
       <div class="hero-head">
-        <div class="hero-lockup"><img class="hero-logo" src="{{ url_for('static', filename='logo-white.png') }}" alt="Melon"></div>
-        <div class="hero-tag">Slot Testing Engine</div>
+        <div class="hero-lockup"><img class="hero-logo" src="{{ url_for('static', filename='logo-white.svg') }}" alt="GameGuard"></div>
+        <div class="hero-tag">Canvas Game Testing Engine</div>
         <h1 class="hero-headline">Automate.</h1>
         <div class="hero-type">
           <span class="typewriter-line" id="tw"></span><span class="tw-caret" id="twCaret"></span>
@@ -91,7 +91,7 @@
   <div class="controls-panel">
 
     <div class="ctx-bar">
-      <span class="ctx-brand"><img class="ctx-logo" src="{{ url_for('static', filename='logo-mark.png') }}" alt="Melon"></span>
+      <span class="ctx-brand"><img class="ctx-logo" src="{{ url_for('static', filename='logo-mark.svg') }}" alt="GameGuard"></span>
       <span class="ctx-scope" id="ctxScope">Betway · ZA · PROD</span>
     </div>
 
@@ -151,6 +151,19 @@
         </div>
       </section>
 
+      <!-- ═══ SCHEDULED JOBS ═══ Batches/sweeps armed to run automatically (once at a future
+           time, or daily) instead of on a click. Shared list for both slot batch and crash
+           sweep schedules, visible regardless of the Slot/Crash toggle above so the operator
+           can always see and cancel what's queued. Manual Launch/Run buttons elsewhere are
+           completely unaffected — they always run immediately, exactly as before. -->
+      <section class="sec" id="schedulesListSection">
+        <div class="eyebrow">Scheduled jobs</div>
+        <div class="sweep-card">
+          <div class="sweep-blurb">Jobs created below (Slot batch schedule, Crash sweep schedule) — cancel one, or pause it with the checkbox without deleting it.</div>
+          <div class="sweep-plan" id="schedulesList"><div class="acc-empty">Loading…</div></div>
+        </div>
+      </section>
+
       <!-- ═══ AUTO SWEEP (DSC) ═══ The one true DSC: test one game per provider on the site,
            weekly rotation, recorded to the prod database. -->
       <section class="sec sweep-sec" id="autoSweepSection">
@@ -191,6 +204,33 @@
         <div class="checks-note"><a href="/dsc-report/latest" style="color:inherit;text-decoration:underline">Download DSC report</a> · <a href="#" onclick="openTlogsPicker();return false" style="color:inherit;text-decoration:underline">Validate transactions</a></div>
       </section>
 
+      <!-- ═══ SCHEDULE — SLOT BATCH ═══ Arms an Excel-driven batch (/launch-batch — the same
+           launch a manual upload+Launch would run, just triggered by time instead of a click)
+           to run once at a future time or daily at a fixed time. Self-contained (its own file
+           picker + account checklist): /launch-batch's own manual upload UI is retired in this
+           DSC-only build (Auto Sweep replaced it above), so this is the one place that launch
+           path is still reachable — scheduling it doesn't require reviving that hidden panel. -->
+      <section class="sec" id="scheduleSlotSection">
+        <div class="eyebrow">Schedule · Slot batch</div>
+        <div class="sweep-card">
+          <div class="sweep-blurb">Upload an Excel of games once — it launches automatically at the time(s) below, sharded across the accounts you check, exactly like a manual batch upload.</div>
+          <div class="sweep-field">
+            <div class="sweep-lbl">Excel file</div>
+            <input type="file" id="schedSlotFile" accept=".xlsx,.xls,.csv" aria-label="Batch Excel file">
+          </div>
+          <div class="sweep-field">
+            <div class="sweep-lbl">Worker accounts <span class="sweep-hint">each checked account gets its own browser</span></div>
+            <div class="sweep-targets" id="schedSlotAccounts"><div class="acc-empty">Loading…</div></div>
+          </div>
+          <label class="chk"><input type="checkbox" id="schedSlotHeadless"><span class="chk-box"></span><span class="chk-lbl">Headless</span></label>
+          <div class="sweep-field">
+            <div class="sweep-lbl">When</div>
+            <div id="schedSlotRecurrence"></div>
+          </div>
+          <button class="sweep-plan-btn" id="schedSlotCreateBtn" type="button">Create schedule</button>
+        </div>
+      </section>
+
       <!-- ═══ CRASH SWEEP ═══ Discover every crash title the region's catalog offers in ONE
            call (provider_sweep.list_crash_games reads the Categories API's curated
            'crashgames' bucket — no per-provider walk needed), pick which to run, then batch
@@ -210,13 +250,18 @@
           <label class="chk" id="crashSweepLiveWrap" style="display:none" title="Places a REAL bet on EVERY selected game, one after another — off by default."><input type="checkbox" id="crashSweepLiveToggle"><span class="chk-box"></span><span class="chk-lbl">Live mode (places REAL bets on every selected game)</span></label>
           <div id="crashSweepLiveFields" style="display:none">
             <div class="sweep-opts">
-              <label class="sweep-num" title="Stake per bet, capped by the server's MAX_STAKE, applied to EVERY selected game.">Stake per game <input type="number" id="crashSweepLiveStake" min="0" step="0.01" placeholder="1.00" aria-label="Live stake amount per game"></label>
+              <label class="sweep-num" title="Optional — leave blank to auto-wager each game's own catalog minimum bet. If set, this OVERRIDES every selected game's minimum, capped by the server's MAX_STAKE.">Stake override (optional) <input type="number" id="crashSweepLiveStake" min="0" step="0.01" placeholder="auto (game minimum)" aria-label="Optional live stake override per game"></label>
               <label class="sweep-num" title="Auto cash-out target multiplier, e.g. 1.5 for 1.5x.">Auto cash-out target <input type="number" id="crashSweepLiveTarget" min="1" step="0.1" placeholder="1.5" aria-label="Auto cash-out target multiplier"></label>
             </div>
             <div class="sweep-hint" id="crashSweepExposureHint" style="margin:4px 0 8px"></div>
             <label class="chk" title="Required before a live sweep will start."><input type="checkbox" id="crashSweepLiveConfirm"><span class="chk-box"></span><span class="chk-lbl">I understand this places real money bets on every selected game</span></label>
           </div>
           <button class="sweep-plan-btn" id="crashSweepRunBtn" type="button" style="display:none">Run selected (dry-run)</button>
+          <div id="crashSweepScheduleWrap" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+            <div class="sweep-lbl">…or schedule it for later</div>
+            <div id="schedCrashRecurrence"></div>
+            <button class="sweep-plan-btn" id="schedCrashCreateBtn" type="button" style="margin-top:6px">Create schedule</button>
+          </div>
         </div>
         <div class="checks-note"><a href="/api/crash-report/latest" style="color:inherit;text-decoration:underline">Download crash report</a></div>
       </section>
@@ -227,7 +272,7 @@
       <section class="sec" id="crashSection" style="display:none">
         <div class="eyebrow">Crash game · LIVE</div>
         <div class="sweep-card">
-          <div class="sweep-blurb">Two ways to test a crash game: <b>by name</b> (uses the selected account + region and resolves the launch URL at runtime — just like slots), or by pasting a <b>direct launch URL</b>. <b>LIVE ONLY — every run places a real wager</b>, capped by the server's MAX_STAKE. For a safe, no-money observation pass instead, use Crash Sweep above (dry-run only) or the CLI's <code>--dry-run</code> flag.</div>
+          <div class="sweep-blurb">Two ways to test a crash game: <b>by name</b> (uses the selected account + region and resolves the launch URL at runtime — just like slots), or by pasting a <b>direct launch URL</b>. <b>LIVE ONLY — every run places a real wager</b>, automatically sized to the game's own minimum bet (or your override), capped by the server's MAX_STAKE. For a safe, no-money observation pass instead, use Crash Sweep above (dry-run only) or the CLI's <code>--dry-run</code> flag.</div>
           <div class="sweep-field">
             <div class="sweep-lbl">Game name</div>
             <input class="field-input" id="crashGameInput" type="text" autocomplete="off" role="combobox"
@@ -240,7 +285,7 @@
             <input class="field-input" id="crashUrlInput" type="text" placeholder="https://…?token=…" aria-label="Crash game launch URL">
           </div>
           <div class="sweep-opts">
-            <label class="sweep-num" title="Stake per bet, capped by the server's MAX_STAKE.">Stake <input type="number" id="crashLiveStake" min="0" step="0.01" placeholder="1.00" aria-label="Live stake amount"></label>
+            <label class="sweep-num" title="Optional — leave blank to auto-wager this game's own catalog minimum bet. If set, this OVERRIDES it, capped by the server's MAX_STAKE.">Stake override (optional) <input type="number" id="crashLiveStake" min="0" step="0.01" placeholder="auto (game minimum)" aria-label="Optional live stake override"></label>
             <label class="sweep-num" title="Auto cash-out target multiplier, e.g. 1.5 for 1.5x.">Auto cash-out target <input type="number" id="crashLiveTarget" min="1" step="0.1" placeholder="1.5" aria-label="Auto cash-out target multiplier"></label>
           </div>
           <label class="chk" title="Required before a run will start."><input type="checkbox" id="crashLiveConfirm"><span class="chk-box"></span><span class="chk-lbl">I understand this places real money bets</span></label>
@@ -330,7 +375,7 @@
       <button class="launch-btn" id="launchBtn" aria-live="polite">
         <span class="lb-prog"></span><span class="lb-fill"></span><span class="lb-label" id="lbLabel">Start Auto Sweep</span>
       </button>
-      <div class="panel-footer">🍈 Melon · Slot Testing Engine · v2</div>
+      <div class="panel-footer">🛡️ GameGuard · Canvas Game Testing Engine · v2</div>
     </div>
   </div>
 </div>
@@ -460,6 +505,7 @@ function setTestMode(mode){
   window.testMode=mode;
   const isCrash = mode==='crash';
   $('autoSweepSection').style.display = isCrash?'none':'';
+  $('scheduleSlotSection').style.display = isCrash?'none':'';
   $('crashSection').style.display = isCrash?'':'none';
   $('crashSweepSection').style.display = isCrash?'':'none';
   // The dock's Stop control is still needed while a crash run is active (startCrash/
@@ -506,7 +552,7 @@ async function loadAccounts(){
   if(!accs.length){
     list.innerHTML=`<div class="acc-empty">No accounts for <b>${brandLabel(platform)} ${region}</b> (${env}) yet.<br>Add one to get started.</div>`;
     if(batchMode) renderBatchWorkers();
-    renderTargets(); loadHistory();
+    renderTargets(); loadHistory(); renderSchedSlotAccounts([]);
     return;
   }
   accs.forEach(a=>{
@@ -543,6 +589,7 @@ async function loadAccounts(){
   });
   if(batchMode) renderBatchWorkers();
   renderTargets(); loadHistory();   // DSC-only: keep the sweep targets + history in sync
+  renderSchedSlotAccounts(accs);
 }
 
 $('toggleAddForm').addEventListener('click', () => {
@@ -664,7 +711,7 @@ async function launchSingle(){
   eventSource=new EventSource('/stream');
   let isParsingReport=false, reportJson='';
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){fin();return;}
+    if(e.data==='[GAMEGUARD_STREAM_END]'){fin();return;}
     if(e.data.trim()==='REPORTPAYLOAD==='){ isParsingReport=true; setProg(.96); return; }
     if(e.data.trim()==='===REPORTPAYLOAD'){
       isParsingReport=false;
@@ -827,7 +874,7 @@ async function startSweep(){
   if(eventSource) eventSource.close();
   eventSource=new EventSource('/stream');
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){ fin(); loadHistory(); return; }
+    if(e.data==='[GAMEGUARD_STREAM_END]'){ fin(); loadHistory(); return; }
     let c='';
     if(/FAIL|❌|error/i.test(e.data)) c='fail';
     else if(/PASS|✅|Report row written|Recorded \d/i.test(e.data)) c='pass';
@@ -864,9 +911,9 @@ async function startCrash(){
   const url=$('crashUrlInput').value.trim();
   const game=$('crashGameInput').value.trim();
   if(!$('crashLiveConfirm').checked){ toast('Check "I understand this places real money bets" to run.','error'); return; }
-  const stake=parseFloat($('crashLiveStake').value);
-  if(!stake||stake<=0){ toast('Enter a stake amount.','error'); $('crashLiveStake').focus(); return; }
-  const liveBody={live:true, bet:String(stake), target:$('crashLiveTarget').value.trim()};
+  const stakeOverride=parseFloat($('crashLiveStake').value)||0;
+  const liveBody={live:true, target:$('crashLiveTarget').value.trim()};
+  if(stakeOverride>0) liveBody.bet=String(stakeOverride);
   let body, label;
   if(url){
     // Direct launch URL (carries its own session token — no account needed).
@@ -889,7 +936,7 @@ async function startCrash(){
   $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
   $('termStatus').textContent='Crash · LIVE'; $('termDot').className='dot run';
   $('arena').classList.add('launched');
-  addLog(`Launching crash game (LIVE — real bets, stake=${liveBody.bet}${liveBody.target?', target='+liveBody.target+'x':''}): `+label,'fail');
+  addLog(`Launching crash game (LIVE — real bets, stake=${liveBody.bet||'auto (game minimum)'}${liveBody.target?', target='+liveBody.target+'x':''}): `+label,'fail');
   let res;
   try{
     res=await fetch('/launch',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -900,7 +947,7 @@ async function startCrash(){
   eventSource=new EventSource('/stream');
   let isParsingReport=false, reportJson='';
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){ fin(); return; }
+    if(e.data==='[GAMEGUARD_STREAM_END]'){ fin(); return; }
     if(e.data.trim()==='REPORTPAYLOAD==='){ isParsingReport=true; setProg(.96); return; }
     if(e.data.trim()==='===REPORTPAYLOAD'){
       isParsingReport=false;
@@ -976,21 +1023,37 @@ window.addEventListener('resize',()=>{ if(crashGameSuggest.classList.contains('o
    user pick which to run, then batch them one-at-a-time through crash_auto.py --dry-run.
    Mirrors Auto Sweep's discover→preview→run shape but stays single-account/serial (see
    /launch-crash-sweep docstring for why there's no parallel-browsers knob here). */
+function parseMoney(text){
+  // The crash catalog's minBetAmount comes back as whatever the provider set — '1', '0.50',
+  // 'R 1', 'R0.50' have all been observed live — not a bare number. parseFloat('R 1') is NaN
+  // (it stops at the non-numeric leading char), so strip everything but digits/dot first.
+  if(text==null) return null;
+  const digits=String(text).replace(/[^\d.]/g,'');
+  if(!digits) return null;
+  const v=parseFloat(digits);
+  return isNaN(v)?null:v;
+}
 let crashSweepGames=[];
-function crashSweepSelected(){ return [...document.querySelectorAll('.crash-sweep-chk:checked')].map(c=>({id:c.dataset.id,name:c.dataset.name,provider:c.dataset.provider})); }
+function crashSweepSelected(){ return [...document.querySelectorAll('.crash-sweep-chk:checked')].map(c=>({id:c.dataset.id,name:c.dataset.name,provider:c.dataset.provider,minBetAmount:c.dataset.min||null})); }
 function updateCrashSweepRunLabel(){
-  const n=crashSweepSelected().length;
+  const picks=crashSweepSelected();
+  const n=picks.length;
   const btn=$('crashSweepRunBtn');
   if(!btn) return;
   const live=$('crashSweepLiveToggle')?.checked;
   if(!n){ btn.textContent='Select at least one game'; btn.classList.remove('live-danger'); return; }
   if(live){
-    const stake=parseFloat($('crashSweepLiveStake').value)||0;
+    const override=parseFloat($('crashSweepLiveStake').value)||0;
     btn.textContent=`Run ${n} selected LIVE (real bets)`;
     btn.classList.add('live-danger');
-    $('crashSweepExposureHint').textContent=stake>0
-      ? `${n} game(s) x ${stake.toFixed(2)} stake = ${(n*stake).toFixed(2)} total exposure (one at a time)`
-      : 'Enter a stake to see total exposure across the selected games.';
+    if(override>0){
+      $('crashSweepExposureHint').textContent=`${n} game(s) x ${override.toFixed(2)} stake (override) = ${(n*override).toFixed(2)} total exposure (one at a time)`;
+    } else {
+      const known=picks.map(p=>parseMoney(p.minBetAmount)).filter(v=>v!=null);
+      $('crashSweepExposureHint').textContent = known.length===n
+        ? `${n} game(s) · each game's own minimum bet = ${known.reduce((a,b)=>a+b,0).toFixed(2)} total exposure (one at a time)`
+        : `${n} game(s) · each game's own minimum bet (some minimums unknown until launch — one at a time)`;
+    }
   } else {
     btn.textContent=`Run ${n} selected (dry-run)`;
     btn.classList.remove('live-danger');
@@ -1008,7 +1071,7 @@ async function discoverCrashSweep(){
   const box=$('crashSweepPlan');
   if(!u||!p){ toast('Select an account first — discovery authenticates like the single-game search.','error'); return; }
   box.innerHTML='<div class="acc-empty">Discovering crash titles for this region…</div>';
-  $('crashSweepHeadlessWrap').style.display='none'; $('crashSweepLiveWrap').style.display='none'; $('crashSweepRunBtn').style.display='none';
+  $('crashSweepHeadlessWrap').style.display='none'; $('crashSweepLiveWrap').style.display='none'; $('crashSweepRunBtn').style.display='none'; $('crashSweepScheduleWrap').style.display='none';
   try{
     const res=await fetch('/api/crash-sweep-plan',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({username:u,password:p,brand:platform,region})});
@@ -1020,7 +1083,7 @@ async function discoverCrashSweep(){
     html+=crashSweepGames.map((g,i)=>{
       const mb=(g.minBetAmount!=null&&g.minBetAmount!=='')?`<span class="gs-meta">min ${esc(g.minBetAmount)}</span>`:'<span></span>';
       return `<div class="plan-row" style="align-items:center"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;margin:0;min-width:0">
-        <input type="checkbox" class="crash-sweep-chk" data-id="${esc(g.id||'')}" data-name="${esc(g.name)}" data-provider="${esc(g.provider||'')}" checked onchange="updateCrashSweepRunLabel()">
+        <input type="checkbox" class="crash-sweep-chk" data-id="${esc(g.id||'')}" data-name="${esc(g.name)}" data-provider="${esc(g.provider||'')}" data-min="${g.minBetAmount!=null?esc(String(g.minBetAmount)):''}" checked onchange="updateCrashSweepRunLabel()">
         <span class="plan-prov">${esc((g.provider||'').replace(/-/g,' '))}</span><span class="plan-sep">·</span><span class="plan-game">${esc(g.name)}</span>${mb}
       </label><button type="button" class="crash-sweep-live-btn" data-idx="${i}" style="margin-left:8px;flex-shrink:0;padding:3px 10px;border-radius:7px;border:1px solid var(--border);background:var(--elevated);color:var(--accent);font:700 11px var(--display);cursor:pointer">▶ Live</button></div>`;
     }).join('');
@@ -1042,11 +1105,11 @@ async function discoverCrashSweep(){
         $('crashUrlInput').value='';
         $('crashGameInput').value=g.name;
         $('crashSection').scrollIntoView({behavior:'smooth', block:'center'});
-        $('crashLiveStake').focus();
-        toast(`"${g.name}" loaded into the Live card — enter a stake and confirm to run it.`,'success');
+        $('crashLiveConfirm').focus();
+        toast(`"${g.name}" loaded into the Live card — check the confirmation box to run it at its own minimum bet (or type an override).`,'success');
       });
     });
-    $('crashSweepHeadlessWrap').style.display=''; $('crashSweepLiveWrap').style.display=''; $('crashSweepRunBtn').style.display='';
+    $('crashSweepHeadlessWrap').style.display=''; $('crashSweepLiveWrap').style.display=''; $('crashSweepRunBtn').style.display=''; $('crashSweepScheduleWrap').style.display='';
     updateCrashSweepRunLabel();
   }catch(e){ box.innerHTML='<div class="acc-empty">Discovery failed.</div>'; }
 }
@@ -1059,9 +1122,9 @@ async function runCrashSweep(){
   let liveBody={};
   if(live){
     if(!$('crashSweepLiveConfirm').checked){ toast('Check "I understand this places real money bets on every selected game" to run live.','error'); return; }
-    const stake=parseFloat($('crashSweepLiveStake').value);
-    if(!stake||stake<=0){ toast('Enter a stake amount for the live sweep.','error'); $('crashSweepLiveStake').focus(); return; }
-    liveBody={live:true, bet:String(stake), target:$('crashSweepLiveTarget').value.trim()};
+    const override=parseFloat($('crashSweepLiveStake').value)||0;
+    liveBody={live:true, target:$('crashSweepLiveTarget').value.trim()};
+    if(override>0) liveBody.bet=String(override);
   }
   isRunning=true;
   document.querySelector('.launch-dock').style.display='';   // Stop control — hidden by default in Crash mode
@@ -1071,8 +1134,10 @@ async function runCrashSweep(){
   $('arenaLog').style.display=''; $('arenaLog').innerHTML='';
   $('termStatus').textContent=`Crash sweep · ${picks.length} games${live?' · LIVE':''}`; $('termDot').className='dot run';
   $('arena').classList.add('launched');
+  let liveStakeDesc='auto (each game\'s own minimum)';
+  if(live&&liveBody.bet) liveStakeDesc=`${liveBody.bet} per game (override, ${(picks.length*parseFloat(liveBody.bet)).toFixed(2)} total exposure)`;
   addLog(live
-    ? `Crash sweep · ${picks.length} game(s) · LIVE — stake=${liveBody.bet} per game (${(picks.length*parseFloat(liveBody.bet)).toFixed(2)} total exposure)${liveBody.target?', target='+liveBody.target+'x':''} · one at a time`
+    ? `Crash sweep · ${picks.length} game(s) · LIVE — stake=${liveStakeDesc}${liveBody.target?', target='+liveBody.target+'x':''} · one at a time`
     : `Crash sweep · ${picks.length} game(s) · ${brandLabel(platform)} ${region} · one at a time (dry-run, no wagers)`,
     live?'fail':'info');
   let d={};
@@ -1086,7 +1151,7 @@ async function runCrashSweep(){
   if(eventSource) eventSource.close();
   eventSource=new EventSource('/stream');
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){ fin(); return; }
+    if(e.data==='[GAMEGUARD_STREAM_END]'){ fin(); return; }
     let c='';
     if(/FAIL|❌|error/i.test(e.data)) c='fail';
     else if(/PASS|✅|ready/i.test(e.data)) c='pass';
@@ -1098,6 +1163,143 @@ async function runCrashSweep(){
 }
 document.getElementById('crashSweepDiscoverBtn')?.addEventListener('click',discoverCrashSweep);
 document.getElementById('crashSweepRunBtn')?.addEventListener('click',runCrashSweep);
+
+/* ═══ SCHEDULED JOBS ═══ Manual Launch/Run buttons above always run immediately, unchanged —
+   this is the separate "run it later instead" path: /api/schedules (POST create, GET list,
+   PATCH toggle, DELETE cancel), backed by the same _do_launch_batch/_do_launch_crash_sweep
+   helpers a manual click uses, just triggered by app.py's background poll loop on a schedule. */
+function recurrenceHtml(prefix){
+  const dayLbls=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  return `<div class="sweep-opts">
+    <label class="sweep-num">Recurrence <select id="${prefix}Kind">
+      <option value="once">Once</option>
+      <option value="daily">Daily</option>
+    </select></label>
+    <label class="sweep-num" id="${prefix}OnceWrap">Run at <input type="datetime-local" id="${prefix}RunAt"></label>
+    <label class="sweep-num" id="${prefix}DailyWrap" style="display:none">Time <input type="time" id="${prefix}TimeOfDay" value="09:00"></label>
+  </div>
+  <div id="${prefix}DaysWrap" style="display:none;margin:2px 0 8px">
+    ${dayLbls.map((d,i)=>`<label class="chk" style="display:inline-flex;margin-right:10px"><input type="checkbox" class="${prefix}Day" value="${i}" checked><span class="chk-box"></span><span class="chk-lbl">${d}</span></label>`).join('')}
+  </div>`;
+}
+function initRecurrencePicker(prefix){
+  const host=$(prefix+'Recurrence'); if(!host) return;
+  host.innerHTML=recurrenceHtml(prefix);
+  const kindSel=$(prefix+'Kind');
+  kindSel.addEventListener('change',()=>{
+    const daily=kindSel.value==='daily';
+    $(prefix+'OnceWrap').style.display=daily?'none':'';
+    $(prefix+'DailyWrap').style.display=daily?'':'none';
+    $(prefix+'DaysWrap').style.display=daily?'':'none';
+  });
+}
+function readRecurrence(prefix){
+  const kind=$(prefix+'Kind').value;
+  if(kind==='once'){
+    const v=$(prefix+'RunAt').value;
+    if(!v) return {error:'Pick a date/time to run at.'};
+    return {recurrence:{kind:'once', run_at:v}};
+  }
+  const t=$(prefix+'TimeOfDay').value;
+  if(!t) return {error:'Pick a time of day.'};
+  const days=[...document.querySelectorAll('.'+prefix+'Day:checked')].map(c=>+c.value);
+  return {recurrence:{kind:'daily', time_of_day:t, days_of_week: days.length===7?null:days}};
+}
+function renderSchedSlotAccounts(accs){
+  const box=$('schedSlotAccounts'); if(!box) return;
+  if(!accs.length){ box.innerHTML='<div class="acc-empty">No accounts for this brand/region yet.</div>'; return; }
+  box.innerHTML=accs.map(a=>`<label class="chk" style="display:flex"><input type="checkbox" class="sched-slot-acc" data-username="${esc(a.username)}" data-password="${esc(a.password)}" checked><span class="chk-box"></span><span class="chk-lbl">${esc(a.label||a.username)}</span></label>`).join('');
+}
+async function scheduleSlotBatch(){
+  const f=$('schedSlotFile').files[0];
+  if(!f){ toast('Choose an Excel file.','error'); return; }
+  const accs=[...document.querySelectorAll('.sched-slot-acc:checked')].map(c=>({username:c.dataset.username,password:c.dataset.password}));
+  if(!accs.length){ toast('Select at least one worker account.','error'); return; }
+  const rec=readRecurrence('schedSlot');
+  if(rec.error){ toast(rec.error,'error'); return; }
+  const fd=new FormData();
+  fd.append('excel', f);
+  fd.append('brand', platform);
+  fd.append('region', region);
+  fd.append('headless', $('schedSlotHeadless').checked);
+  fd.append('accounts', JSON.stringify(accs));
+  fd.append('tests', JSON.stringify(['dsc']));
+  fd.append('recurrence', JSON.stringify(rec.recurrence));
+  try{
+    const res=await fetch('/api/schedules',{method:'POST', body:fd});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ toast(d.message||'Could not create schedule','error'); return; }
+    toast('Slot batch scheduled.','success');
+    $('schedSlotFile').value='';
+    loadSchedules();
+  }catch(e){ toast('Could not create schedule: '+e.message,'error'); }
+}
+async function scheduleCrashSweep(){
+  const picks=crashSweepSelected();
+  if(!picks.length){ toast('Select at least one crash game above first.','error'); return; }
+  const u=$('inputUser').value, p=$('inputPass').value;
+  if(!u||!p){ toast('Select an account first.','error'); return; }
+  const rec=readRecurrence('schedCrash');
+  if(rec.error){ toast(rec.error,'error'); return; }
+  const live=!!$('crashSweepLiveToggle')?.checked;
+  const body={picks, username:u, password:p, brand:platform, region,
+              headless:$('crashSweepHeadless').checked, live, recurrence:rec.recurrence};
+  if(live){
+    if(!$('crashSweepLiveConfirm').checked){ toast('Check "I understand this places real money bets on every selected game" first.','error'); return; }
+    const override=parseFloat($('crashSweepLiveStake').value)||0;
+    if(override>0) body.bet=String(override);
+    body.target=$('crashSweepLiveTarget').value.trim();
+  }
+  try{
+    const res=await fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ toast(d.message||'Could not create schedule','error'); return; }
+    toast('Crash sweep scheduled.','success');
+    loadSchedules();
+  }catch(e){ toast('Could not create schedule: '+e.message,'error'); }
+}
+$('schedSlotCreateBtn')?.addEventListener('click',scheduleSlotBatch);
+$('schedCrashCreateBtn')?.addEventListener('click',scheduleCrashSweep);
+
+function describeRecurrence(rec){
+  if(!rec) return '';
+  if(rec.kind==='once'){
+    const d=new Date(rec.run_at);
+    return 'Once · '+(isNaN(d)?esc(rec.run_at||''):d.toLocaleString());
+  }
+  const days=rec.days_of_week;
+  const dayLbl=(!days||days.length===7)?'daily':days.map(i=>['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]||'?').join(',');
+  return `Daily (${esc(dayLbl)}) · ${esc(rec.time_of_day||'')}`;
+}
+async function loadSchedules(){
+  const box=$('schedulesList'); if(!box) return;
+  try{
+    const jobs=await (await fetch('/api/schedules')).json();
+    if(!jobs.length){ box.innerHTML='<div class="acc-empty">No scheduled jobs yet.</div>'; return; }
+    box.innerHTML=jobs.map(j=>{
+      const pl=j.payload||{};
+      const label = j.type==='slot'
+        ? `Slot batch · ${(pl.accounts||[]).length} account(s)`
+        : `Crash sweep · ${(pl.picks||[]).length} game(s)${pl.live?' · LIVE':''}`;
+      const status = j.last_status ? ` · last: ${esc(String(j.last_status))}` : '';
+      return `<div class="plan-row" style="align-items:center">
+        <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;margin:0;min-width:0">
+          <input type="checkbox" class="sched-toggle" data-id="${esc(j.id)}" ${j.enabled?'checked':''}>
+          <span style="min-width:0">${esc(label)} · ${describeRecurrence(j.recurrence)}${status}</span>
+        </label>
+        <button type="button" class="sched-cancel" data-id="${esc(j.id)}" style="margin-left:8px;flex-shrink:0;padding:3px 10px;border-radius:7px;border:1px solid var(--border);background:var(--elevated);color:var(--accent);font:700 11px var(--display);cursor:pointer">✕ Cancel</button>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('.sched-toggle').forEach(cb=>cb.addEventListener('change',async()=>{
+      await fetch(`/api/schedules/${encodeURIComponent(cb.dataset.id)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:cb.checked})});
+      loadSchedules();
+    }));
+    box.querySelectorAll('.sched-cancel').forEach(btn=>btn.addEventListener('click',async()=>{
+      await fetch(`/api/schedules/${encodeURIComponent(btn.dataset.id)}`,{method:'DELETE'});
+      loadSchedules();
+    }));
+  }catch(e){ box.innerHTML='<div class="acc-empty">Could not load schedules.</div>'; }
+}
 
 /* ═══ BATCH LAUNCH ═══ */
 async function launchBatch(){
@@ -1136,7 +1338,7 @@ async function launchBatch(){
   if(eventSource) eventSource.close();
   eventSource=new EventSource('/stream');
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){ showBatchDone(d); fin(); return; }
+    if(e.data==='[GAMEGUARD_STREAM_END]'){ showBatchDone(d); fin(); return; }
     if(/\[BATCH\] Summary/.test(e.data)){ window._batchSummary=e.data.replace(/^\[BATCH\]\s*/,''); }
     if(/Processing:/.test(e.data)){
       batchStarted++;
@@ -1161,7 +1363,7 @@ function showBatchDone(meta){
   r.innerHTML=`
     <div class="rpt2">
       <header class="rpt2-bar">
-        <div class="rpt2-brand">🍈 <b>Melon</b> <span>DSC Batch</span></div>
+        <div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>DSC Batch</span></div>
         <div class="rpt2-meta">
           <span class="rpt2-chip">${brandLabel(platform)}</span>
           <span class="rpt2-chip">${region}</span>
@@ -1211,7 +1413,7 @@ async function openTlogsPicker(){
     </div>`).join('');
   r.innerHTML=`<div class="rpt2">
     <header class="rpt2-bar">
-      <div class="rpt2-brand">🍈 <b>Melon</b> <span>Tlogs · Transaction validation</span></div>
+      <div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>Tlogs · Transaction validation</span></div>
       <div class="rpt2-actions"><button class="rpt2-close" onclick="closeReport()" title="Close (Esc)">✕</button></div>
     </header>
     <div style="max-width:880px;margin:18px auto;padding:0 16px;">
@@ -1239,7 +1441,7 @@ async function startTlogs(name){
   eventSource=new EventSource('/stream');
   let parsing=false, buf='';
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){ endTlogs(); return; }
+    if(e.data==='[GAMEGUARD_STREAM_END]'){ endTlogs(); return; }
     const line=e.data.replace(/^\[TLOGS\]\s?/,'');
     if(line.trim()==='VALIDATIONPAYLOAD==='){ parsing=true; return; }
     if(line.trim()==='===VALIDATIONPAYLOAD'){
@@ -1287,7 +1489,7 @@ function renderTlogsReport(p){
   const r=$('report'); $('arenaLog').style.display='none';
   r.innerHTML=`<div class="rpt2">
     <header class="rpt2-bar">
-      <div class="rpt2-brand">🍈 <b>Melon</b> <span>Tlogs · Transaction validation</span></div>
+      <div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>Tlogs · Transaction validation</span></div>
       <div class="rpt2-meta">
         ${chip('Verified',s.verified)} ${chip('Weak',s.verified_weak,true)} ${chip('Missing',s.missing,true)}
         ${chip('No-bet OK',s.absent_ok)} ${chip('Unexpected',s.unexpected_wagers,true)} ${chip('Violations',s.violations,true)}
@@ -1317,7 +1519,7 @@ function renderReport(payload){
   const runId=(payload&&payload.run_id)||summary.run_id||'';
   if(!results||!results.length){
     $('arenaLog').style.display='none';
-    r.innerHTML=`<div class="rpt2"><header class="rpt2-bar"><div class="rpt2-brand">🍈 <b>Melon</b> <span>QA Report</span></div><button class="rpt2-close" onclick="closeReport()">✕</button></header><div class="acc-empty" style="padding:80px 20px;">No checks produced results — see the log.</div></div>`;
+    r.innerHTML=`<div class="rpt2"><header class="rpt2-bar"><div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>QA Report</span></div><button class="rpt2-close" onclick="closeReport()">✕</button></header><div class="acc-empty" style="padding:80px 20px;">No checks produced results — see the log.</div></div>`;
     r.classList.add('visible'); document.addEventListener('keydown',reportKey); return;
   }
   $('arenaLog').style.display='none';
@@ -1334,12 +1536,12 @@ function renderReport(payload){
   const ringColor=rate>=80?'var(--green)':(rate>=50?'var(--amber)':'var(--accent)');
 
   window._lastReport=payload;
-  window._lastReportSummary=`Melon QA — ${gameName} · ${brandLabel(platform)} ${region} (${env})\n${rate}% passed · ${passed} passed / ${failed} failed / ${skipped} skipped of ${total}${dur?` · ${dur}`:''}${runId?`\nrun ${runId}`:''}`;
+  window._lastReportSummary=`GameGuard QA — ${gameName} · ${brandLabel(platform)} ${region} (${env})\n${rate}% passed · ${passed} passed / ${failed} failed / ${skipped} skipped of ${total}${dur?` · ${dur}`:''}${runId?`\nrun ${runId}`:''}`;
 
   // pass-rate history (per game) → trend + sparkline
   let hist=[], trend='';
   try{
-    const key='melon_hist_'+gameName;
+    const key='gameguard_hist_'+gameName;
     hist=JSON.parse(localStorage.getItem(key)||'[]'); if(!Array.isArray(hist)) hist=[];
     const prev=hist.length?hist[hist.length-1]:null;
     hist.push(rate); if(hist.length>12) hist=hist.slice(-12);
@@ -1384,7 +1586,7 @@ function renderReport(payload){
   r.innerHTML=`
     <div class="rpt2">
       <header class="rpt2-bar">
-        <div class="rpt2-brand">🍈 <b>Melon</b> <span>QA Report</span></div>
+        <div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>QA Report</span></div>
         <div class="rpt2-meta">
           <span class="rpt2-game">${esc(gameName)}</span>
           <span class="rpt2-chip">${brandLabel(platform)}</span>
@@ -1484,7 +1686,7 @@ function exportReport(){
   try{
     const blob=new Blob([JSON.stringify(window._lastReport,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=`melon-report-${String(window.lastGame||'run').replace(/[^a-z0-9]+/gi,'_')}.json`;
+    a.download=`gameguard-report-${String(window.lastGame||'run').replace(/[^a-z0-9]+/gi,'_')}.json`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
     toast('Report exported','success');
   }catch(e){ toast('Export failed','error'); }
@@ -1700,7 +1902,7 @@ function positionSuggest(){ const r=gameInput.getBoundingClientRect(); gameSugge
 let suggestTimer=null, suggestSeq=0, activeIdx=-1, flatItems=[];
 window.selectedGame=null;
 const store={ get(k){ try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return[];} }, set(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch{} } };
-let recent=store.get('melon_recent'), pinned=store.get('melon_pinned');
+let recent=store.get('gameguard_recent'), pinned=store.get('gameguard_pinned');
 const isPinned=n=>pinned.some(x=>x.name===n);
 
 function hideSuggest(){ gameSuggest.classList.remove('open'); gameSuggest.innerHTML=''; gameInput.setAttribute('aria-expanded','false'); activeIdx=-1; flatItems=[]; }
@@ -1710,13 +1912,13 @@ function selectGame(it){
   gameInput.value=it.name;
   window.selectedGame={id:it.id||null,minBetAmount:it.minBetAmount!=null?it.minBetAmount:null};
   recent=[{name:it.name,id:it.id||null,minBetAmount:it.minBetAmount!=null?it.minBetAmount:null,provider:it.provider||''},...recent.filter(x=>x.name!==it.name)].slice(0,6);
-  store.set('melon_recent',recent); hideSuggest();
+  store.set('gameguard_recent',recent); hideSuggest();
   exitBatch('Single-game mode — only "'+it.name+'" will run');
 }
 function togglePin(it){
   if(isPinned(it.name)) pinned=pinned.filter(x=>x.name!==it.name);
   else pinned=[{name:it.name,id:it.id||null,minBetAmount:it.minBetAmount!=null?it.minBetAmount:null,provider:it.provider||''},...pinned].slice(0,12);
-  store.set('melon_pinned',pinned);
+  store.set('gameguard_pinned',pinned);
 }
 
 function itemRow(g,q){
@@ -1870,7 +2072,7 @@ function renderCrashSweepReport(d,r){
   const rp=$('report'); $('arenaLog').style.display='none';
   rp.innerHTML=`<div class="rpt2">
     <header class="rpt2-bar">
-      <div class="rpt2-brand">🍈 <b>Melon</b> <span>Crash Sweep</span></div>
+      <div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>Crash Sweep</span></div>
       <div class="rpt2-meta">
         <span class="rpt2-game">${esc(d.run_id||'')}</span>
         <span class="rpt2-chip">${rows.length} games</span>
@@ -1909,7 +2111,7 @@ function renderBatchReport(d,r){
   const rp=$('report'); $('arenaLog').style.display='none';
   rp.innerHTML=`<div class="rpt2">
     <header class="rpt2-bar">
-      <div class="rpt2-brand">🍈 <b>Melon</b> <span>DSC Batch</span></div>
+      <div class="rpt2-brand">🛡️ <b>GameGuard</b> <span>DSC Batch</span></div>
       <div class="rpt2-meta">
         <span class="rpt2-game">${esc((r&&r.game)||d.run_id||'')}</span>
         <span class="rpt2-chip">${rows.length} games</span>
@@ -1958,7 +2160,7 @@ async function resumeIfRunning(){
   let parsing=false, buf='';
   if(batchMeta&&batchMeta.total) batchTotal=batchMeta.total;
   eventSource.onmessage=(e)=>{
-    if(e.data==='[MELON_STREAM_END]'){ if(batchMeta) showBatchDone(batchMeta); fin(); return; }
+    if(e.data==='[GAMEGUARD_STREAM_END]'){ if(batchMeta) showBatchDone(batchMeta); fin(); return; }
     if(batchMeta){
       if(/\[BATCH\] Summary/.test(e.data)) window._batchSummary=e.data.replace(/^\[BATCH\]\s*/,'');
     } else {
@@ -1977,6 +2179,7 @@ async function resumeIfRunning(){
 
 /* ═══ INIT ═══ */
 buildRegions(); updateCtx(); loadAccounts(); loadRuns(); resumeIfRunning();
+initRecurrencePicker('schedSlot'); initRecurrencePicker('schedCrash'); loadSchedules();
 </script>
 </body>
 </html>

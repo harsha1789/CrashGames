@@ -465,6 +465,80 @@ async def _read_balance(page, ss_dir, tag):
     return T.parse_amount(state.get("balance") or ""), state
 
 
+async def _read_bet_value(page, ss_dir, tag):
+    """Screenshot + vision read of the CURRENT stake/bet field (mirrors _read_balance above).
+    Used by floor_bet_input's closed-loop flooring, which needs to see whether a decrement
+    click actually moved the on-screen stake."""
+    path = os.path.join(ss_dir, f"{tag}.png")
+    try:
+        await page.screenshot(path=path)
+        state = read_round_state(Image.open(path))
+    except Exception as e:
+        print(f"    [WARN] _read_bet_value({tag}) failed: {e}")
+        state = {}
+    return T.parse_amount(state.get("bet") or ""), state
+
+
+async def floor_bet_input(page, controls, ss_dir, max_clicks=8, rounds=4):
+    """No reliable minimum bet is known for this game (no operator override, no catalog
+    minBetAmount) — discover the real floor IN-GAME instead of guessing, mirroring
+    slot_dsc.py's closed-loop stepper flooring (_probe_and_floor): one probe click, confirm
+    the stake did not RISE (a mislabeled increment), then commit rounds of clicks until the
+    value stops dropping. Only used for a raw launch URL with no catalog lookup — the crash
+    sweep and by-name single launches almost always have a catalog hint by the time this
+    would matter (see resolve_stake). Returns (stake, at_floor); at_floor=False means we gave
+    up before confirming the true minimum (unreadable value, or the round cap hit while it
+    was still dropping) — the caller should treat the returned stake as a best-effort value,
+    not a confirmed floor."""
+    dec = T.find_control(controls, "bet decrement", "bet -", "decrease")
+    if not dec:
+        print("  [FLOOR] No bet-decrement control detected — cannot floor the stake in-game")
+        return None, False
+    stake, _ = await _read_bet_value(page, ss_dir, "floor_before")
+    print(f"  [FLOOR] Flooring stake in-game via '{dec.get('label')}' "
+          f"(currently {stake if stake is not None else 'unreadable'})")
+    try:
+        await page.mouse.click(*dec["center"])
+    except Exception as e:
+        print(f"    [FLOOR] click warning: {e}")
+        return stake, False
+    await asyncio.sleep(0.8)
+    probed, _ = await _read_bet_value(page, ss_dir, "floor_probe")
+    if stake is not None and probed is not None and probed > stake + 0.01:
+        print(f"    [FLOOR] ⚠️ '{dec.get('label')}' RAISED the stake ({stake:g} → {probed:g}) — "
+              f"mislabeled increment, abandoning after one click")
+        return probed, False
+    cur = probed if probed is not None else stake
+    for rnd in range(rounds):
+        for _ in range(max_clicks - (1 if rnd == 0 else 0)):
+            await page.mouse.click(*dec["center"])
+            await asyncio.sleep(0.25)
+        new, _ = await _read_bet_value(page, ss_dir, f"floor_r{rnd}")
+        if new is None:
+            return cur, False              # unreadable — keep best-known, floor unconfirmed
+        if cur is not None and new >= cur - 0.01:
+            print(f"  [FLOOR] Stepper bottomed out at {new:g} — this is the game minimum")
+            return new, True                # stopped moving — this stepper's real floor
+        cur = new
+    return cur, False                       # round cap hit while still dropping
+
+
+async def resolve_stake(page, controls, ss_dir, bet_override=None, min_bet_hint=None):
+    """Decide what to wager, in priority order: an explicit operator-typed override, then the
+    casino catalog's own minBetAmount for this game, then (only when neither exists — a raw
+    launch URL with no catalog lookup) in-game floor detection. Never guesses a number when
+    none of the three is available. Returns (stake, source) for logging/reporting; source in
+    {"override","catalog","floored","unknown"}."""
+    if bet_override is not None and bet_override > 0:
+        return bet_override, "override"
+    if min_bet_hint is not None and min_bet_hint > 0:
+        return min_bet_hint, "catalog"
+    stake, at_floor = await floor_bet_input(page, controls, ss_dir)
+    if stake is not None and stake > 0:
+        return stake, "floored" if at_floor else "floored (unconfirmed)"
+    return None, "unknown"
+
+
 async def _await_request(monitor, since_idx, timeout=5.0, poll=0.2):
     """Poll for the first non-idle POST/WS request since `since_idx` — a real wager action is
     a POST or WS send, exactly like a slot spin (reuses UnifiedGameMonitor.spin_request_since
@@ -683,8 +757,9 @@ async def _abort_session(page, results, ctx_start, context, browser, recordings_
 # ═══════════════════════════════════════════════════════════════════
 #   MAIN TEST FLOW
 # ═══════════════════════════════════════════════════════════════════
-async def run_crash_tests(url, live=False, bet="", target="", rounds=2, mobile=False, headless=False,
-                          account=None, brand="betway", region="ZA", provider=None, game_name=None):
+async def run_crash_tests(url, live=False, bet="", min_bet="", target="", rounds=2, mobile=False,
+                          headless=False, account=None, brand="betway", region="ZA",
+                          provider=None, game_name=None):
     results = []
     os.makedirs(T.SCREENSHOT_DIR, exist_ok=True)
     monitor = slot_spin.UnifiedGameMonitor()
@@ -694,7 +769,7 @@ async def run_crash_tests(url, live=False, bet="", target="", rounds=2, mobile=F
     print(f"URL: {url[:80]}...\n")
 
     recordings_dir = os.path.join(T.RUN_DIR, "video") if T.RUN_DIR else \
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
+        os.path.join(T._base_dir(), "recordings")
     os.makedirs(recordings_dir, exist_ok=True)
 
     # Tlogs plumbing (live only): a "report_path" the same way the slot pipeline anchors one —
@@ -717,7 +792,7 @@ async def run_crash_tests(url, live=False, bet="", target="", rounds=2, mobile=F
                             "locale": "en-ZA"}
             context_args.update(p.devices['iPhone 13'])
         else:
-            _win_pos = os.environ.get("MELON_WINDOW_POS", "0,0")
+            _win_pos = os.environ.get("GAMEGUARD_WINDOW_POS", "0,0")
             browser = await p.chromium.launch(
                 headless=headless,
                 args=["--window-size=1920,1080", f"--window-position={_win_pos}"] + _no_throttle)
@@ -769,7 +844,7 @@ async def run_crash_tests(url, live=False, bet="", target="", rounds=2, mobile=F
                 "opened elsewhere (or mint a dedicated automation session).")
 
         await monitor.learn_idle(duration=8)
-        if os.environ.get("MELON_DUMP_NETWORK"):
+        if os.environ.get("GAMEGUARD_DUMP_NETWORK"):
             # Recon aid: learn_idle() only keeps a deduped path set (no status/body). Dump the
             # full request+response capture (incl. any WS frames) so a stuck-load/DISCONNECT can
             # be diagnosed from actual server responses instead of guessing.
@@ -932,31 +1007,39 @@ async def run_crash_tests(url, live=False, bet="", target="", rounds=2, mobile=F
                 tr.details = "Skipped: requires --live (places real wagers)"
                 results.append(tr); print(tr)
         else:
-            stake = T.parse_amount(bet) if bet else None
+            # Re-detect controls right before wagering — state may have drifted since TEST 1.
+            # Done BEFORE stake resolution (not after, as before) because the in-game floor
+            # fallback in resolve_stake needs real, fresh controls to floor against.
+            w_controls, _ = await detect_controls(page, T.SCREENSHOT_DIR, "wager_controls")
+            bet_override = T.parse_amount(bet) if bet else None
+            min_bet_hint = T.parse_amount(str(min_bet)) if min_bet else None
+            stake, stake_source = await resolve_stake(page, w_controls, T.SCREENSHOT_DIR,
+                                                       bet_override=bet_override,
+                                                       min_bet_hint=min_bet_hint)
             if stake is None:
-                print(f"\n{'='*70}\n  [!] --live requires --bet <amount> — refusing to guess a stake.\n{'='*70}")
+                print(f"\n{'='*70}\n  [!] Could not resolve a safe minimum stake automatically "
+                      f"(no --bet override, no catalog min-bet, and no in-game bet control to "
+                      f"floor) — refusing to guess.\n{'='*70}")
                 for name in wager_tests:
                     tr = T.TestResult(name, "crash_controls.png")
                     tr.passed = None
-                    tr.details = "Skipped: --live requires --bet <amount>"
+                    tr.details = "Skipped: could not resolve a safe minimum stake automatically"
                     results.append(tr); print(tr)
             elif stake > config_env.MAX_STAKE:
-                print(f"\n{'='*70}\n  [!] --bet {stake:g} exceeds MAX_STAKE {config_env.MAX_STAKE:g} "
-                      f"— refusing all wager tests.\n{'='*70}")
+                print(f"\n{'='*70}\n  [!] Stake {stake:g} (source={stake_source}) exceeds "
+                      f"MAX_STAKE {config_env.MAX_STAKE:g} — refusing all wager tests.\n{'='*70}")
                 for name in wager_tests:
                     tr = T.TestResult(name, "crash_controls.png")
                     tr.passed = False
-                    tr.details = f"Refused: --bet {stake:g} exceeds the safety cap {config_env.MAX_STAKE:g}"
+                    tr.details = f"Refused: stake {stake:g} exceeds the safety cap {config_env.MAX_STAKE:g}"
                     results.append(tr); print(tr)
             else:
                 try:
                     target_mult = float(target) if target else None
                 except ValueError:
                     target_mult = None
-                print(f"\n{'='*70}\n  LIVE WAGER TESTS — stake={stake:g}, target={target_mult}\n{'='*70}")
-
-                # Re-detect controls right before wagering — state may have drifted since TEST 1.
-                w_controls, _ = await detect_controls(page, T.SCREENSHOT_DIR, "wager_controls")
+                print(f"\n{'='*70}\n  LIVE WAGER TESTS — stake={stake:g} (source={stake_source}), "
+                      f"target={target_mult}\n{'='*70}")
 
                 # ── WAGER TEST 1: place bet during betting window -> exactly 1 request ──
                 _wt_s = time.time() - ctx_start
@@ -1242,9 +1325,10 @@ def _setup_run_dir(run_dir):
 def resolve_launch_url(game, username, password, brand="betway", region="ZA", category=None):
     """Resolve a crash game's launch URL at runtime — the SAME flow the slot suite uses:
     authenticate -> search the casino catalog -> fetch the launch URL. Returns
-    (launch_url, provider) or exits with a clear message. Reuses the region-aware modules
-    verbatim. `provider` is the catalog's own field, threaded through for the live tlogs
-    bet-record (see run_crash_tests) — no second lookup needed.
+    (launch_url, provider, min_bet) or exits with a clear message. Reuses the region-aware
+    modules verbatim. `provider` and `min_bet` (the catalog's own minBetAmount, same field
+    test_spin_button.py reads for slots) are threaded through so run_crash_tests can wager the
+    game's own minimum automatically (see resolve_stake) — no second lookup needed.
 
     `category` is the launch API's routing field. Confirmed 2026-08-08 by capturing a real
     browser launch of Aviator (Spribe, gameId 1322) on betway.co.za: the site's own POST to
@@ -1285,7 +1369,7 @@ def resolve_launch_url(game, username, password, brand="betway", region="ZA", ca
         print("❌ No launch URL returned for this game.")
         sys.exit(1)
     print(f"🔗 Launch URL: {launch_url[:80]}...")
-    return launch_url, info.get("provider")
+    return launch_url, info.get("provider"), info.get("minBetAmount")
 
 
 async def run_crash_tests_with_retry(resolve_fn, max_retries=3, retry_cooldown=20, **kwargs):
@@ -1311,16 +1395,18 @@ async def run_crash_tests_with_retry(resolve_fn, max_retries=3, retry_cooldown=2
     retry by itself — that's a round-timing race outside this code's control, not a defect a
     fresh attempt reliably fixes, and every retry costs a full multi-minute browser session.
 
-    resolve_fn: zero-arg callable returning (launch_url, provider); may raise SystemExit (as
-    resolve_launch_url does on a real resolution failure) — caught here as a failed attempt on
-    any try but the last, where it propagates same as a non-retried run would.
+    resolve_fn: zero-arg callable returning (launch_url, provider, min_bet); may raise
+    SystemExit (as resolve_launch_url does on a real resolution failure) — caught here as a
+    failed attempt on any try but the last, where it propagates same as a non-retried run
+    would. `min_bet` (the catalog's minBetAmount) is threaded into kwargs the same way
+    `provider` already is, unless an explicit --min-bet already won.
     """
     results = None
     for attempt in range(1, max_retries + 1):
         if attempt > 1:
             print(f"\n{'#'*70}\n  RETRY ATTEMPT {attempt}/{max_retries} (fresh launch URL)\n{'#'*70}")
         try:
-            url, provider = resolve_fn()
+            url, provider, catalog_min_bet = resolve_fn()
         except SystemExit:
             print(f"  [RETRY] attempt {attempt}/{max_retries} could not resolve a launch URL.")
             if attempt == max_retries:
@@ -1329,6 +1415,8 @@ async def run_crash_tests_with_retry(resolve_fn, max_retries=3, retry_cooldown=2
             continue
         if provider and not kwargs.get("provider"):
             kwargs["provider"] = provider
+        if catalog_min_bet and not kwargs.get("min_bet"):
+            kwargs["min_bet"] = catalog_min_bet
         results = await run_crash_tests(url, **kwargs)
         aborted = any(r.name == "Crash game session is live" for r in results)
         t1 = next((r for r in results if r.name == "Crash UI controls detected"), None)
@@ -1364,7 +1452,14 @@ if __name__ == "__main__":
     parser.add_argument("--live", action="store_true",
                         help="Run wager-dependent tests (PLACES REAL BETS). Default is safe dry-run.")
     parser.add_argument("--dry-run", action="store_true", help="Explicit dry-run (default behaviour)")
-    parser.add_argument("--bet", type=str, default="", help="Bet/stake amount for live tests")
+    parser.add_argument("--bet", type=str, default="",
+                        help="Operator-typed stake OVERRIDE for live tests — wins over the "
+                             "catalog minimum and in-game floor detection when set. Optional: "
+                             "leave unset to auto-wager the game's own minimum bet.")
+    parser.add_argument("--min-bet", type=str, default="",
+                        help="Known catalog minimum bet for this game (auto-filled when --game "
+                             "resolves it; pass explicitly alongside a raw URL to skip in-game "
+                             "floor detection). Used only when --bet is not set.")
     parser.add_argument("--target", type=str, default="", help="Auto cash-out target multiplier (e.g. 1.5)")
     parser.add_argument("--rounds", type=int, default=2, help="Rounds to observe")
     parser.add_argument("--mobile", action="store_true", help="Mobile viewport (iPhone 13)")
@@ -1383,13 +1478,14 @@ if __name__ == "__main__":
     # A direct URL wins; otherwise resolve it at runtime from --game (just like slots).
     launch_url = args.url
     provider = None
+    catalog_min_bet = None
     if not launch_url and args.game:
         if not args.username or not args.password:
             print("Runtime resolution needs --username and --password (or pass a direct URL).")
             sys.exit(1)
-        launch_url, provider = resolve_launch_url(args.game, args.username, args.password,
-                                                  brand=args.brand, region=args.region,
-                                                  category=args.category or None)
+        launch_url, provider, catalog_min_bet = resolve_launch_url(
+            args.game, args.username, args.password,
+            brand=args.brand, region=args.region, category=args.category or None)
     if not launch_url:
         parser.print_help()
         sys.exit(1)
@@ -1400,8 +1496,8 @@ if __name__ == "__main__":
         print("\n[!] LIVE MODE: wager-dependent tests will place REAL bets.\n")
 
     max_retries = args.retries if (not live and args.retries > 1) else 1
-    # Attempt 1 reuses the launch_url/provider already resolved above (no point re-resolving
-    # immediately); a --game retry re-resolves fresh from attempt 2 onward.
+    # Attempt 1 reuses the launch_url/provider/min_bet already resolved above (no point
+    # re-resolving immediately); a --game retry re-resolves fresh from attempt 2 onward.
     _used_first = []
     if args.game:
         def _resolve():
@@ -1410,14 +1506,14 @@ if __name__ == "__main__":
                                           brand=args.brand, region=args.region,
                                           category=args.category or None)
             _used_first.append(True)
-            return launch_url, provider
+            return launch_url, provider, catalog_min_bet
     else:
         def _resolve():
-            return launch_url, provider
+            return launch_url, provider, catalog_min_bet
 
     asyncio.run(run_crash_tests_with_retry(
         _resolve, max_retries=max_retries, retry_cooldown=args.retry_cooldown,
-        live=live, bet=args.bet, target=args.target,
+        live=live, bet=args.bet, min_bet=args.min_bet or catalog_min_bet, target=args.target,
         rounds=args.rounds, mobile=args.mobile, headless=args.headless,
         account=args.username or None, brand=args.brand, region=args.region,
         provider=provider, game_name=args.game or None,

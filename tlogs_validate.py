@@ -1,8 +1,8 @@
 """
-tlogs_validate.py — Phase-2 Tlogs: verify Melon's recorded spins against the REAL
+tlogs_validate.py — Phase-2 Tlogs: verify GameGuard's recorded spins against the REAL
 transaction history on the Betway site.
 ================================================================================
-Melon's DSC sweep writes one JSON line per spin into runs/DSC_Report_*_records.jsonl
+GameGuard's DSC sweep writes one JSON line per spin into runs/DSC_Report_*_records.jsonl
 (schema: RECORDS.md). Betway reflects bets in ~5 minutes, so shortly after the sweep
 this script:
 
@@ -46,7 +46,11 @@ from modules.utils import add_country_code, region_config, auth_headers  # noqa:
 from modules.auth_handler import AuthHandler  # noqa: E402
 from curl_cffi import requests as _creq  # noqa: E402  (Cloudflare-passing HTTP, like the sweep's auth)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# In a frozen PyInstaller build, __file__ resolves inside the bundle, not the folder actually
+# holding this .exe (where accounts.json lives) — os.path.dirname(sys.executable) is correct
+# there. Dev mode (running from source) is unaffected.
+BASE_DIR = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+           else os.path.dirname(os.path.abspath(__file__)))
 
 # ─── per-(brand, region) site pack ────────────────────────────────────────────
 # Selectors come from the live ZA site (captured 2026-07-10). The history menu anchor's id
@@ -409,7 +413,7 @@ _HL_JS = """
   row.style.position = 'relative';
   row.style.zIndex = '9998';
   const tag = document.createElement('div');
-  tag.className = 'melon-tlogs-tag';
+  tag.className = 'gameguard-tlogs-tag';
   tag.textContent = args.label;
   tag.style.cssText = 'position:absolute;top:-28px;left:0;background:' + args.color +
     ';color:#fff;font:700 13px sans-serif;padding:4px 12px;border-radius:6px;' +
@@ -422,19 +426,19 @@ _HL_JS = """
 
 _HL_CLEAR_JS = """
 () => {
-  document.querySelectorAll('.melon-tlogs-tag').forEach(t => t.remove());
+  document.querySelectorAll('.gameguard-tlogs-tag').forEach(t => t.remove());
   for (const row of document.querySelectorAll('div[class*="grid-cols-"]')) {
     row.style.outline = ''; row.style.outlineOffset = '';
     row.style.boxShadow = ''; row.style.zIndex = '';
   }
-  document.querySelectorAll('.melon-tlogs-banner').forEach(b => b.remove());
+  document.querySelectorAll('.gameguard-tlogs-banner').forEach(b => b.remove());
 }
 """
 
 _BANNER_JS = """
 (text) => {
   const b = document.createElement('div');
-  b.className = 'melon-tlogs-banner';
+  b.className = 'gameguard-tlogs-banner';
   b.textContent = text;
   b.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);' +
     'background:#dc2626;color:#fff;font:700 14px sans-serif;padding:10px 20px;' +

@@ -30,8 +30,8 @@ class AuthHandler:
             # Username: normalized to the region dial code by default. Some accounts authenticate
             # ONLY with the raw number as the site actually sends it (e.g. the ZA account 830099887,
             # whose live browser payload used the number as-is, NOT 27-prefixed) — set
-            # MELON_USERNAME_RAW=1 to pass it through unprefixed.
-            if os.environ.get("MELON_USERNAME_RAW"):
+            # GAMEGUARD_USERNAME_RAW=1 to pass it through unprefixed.
+            if os.environ.get("GAMEGUARD_USERNAME_RAW"):
                 formatted = (username or "").strip().lstrip("+")
             else:
                 formatted = add_country_code(username, region)
@@ -41,13 +41,13 @@ class AuthHandler:
             # downstream as a live-game "session held by another tab/browser" disconnect (confirmed
             # 2026-07-23 — a hardcoded literal here caused instant DISCONNECTED on the crash vertical
             # whenever two accounts authenticated close together). Generate a fresh one per call;
-            # MELON_SESSION_TRACKING_TOKEN still overrides for reproducing a specific captured session.
+            # GAMEGUARD_SESSION_TRACKING_TOKEN still overrides for reproducing a specific captured session.
             # Betway geo-gates by region: a ZA account authenticated from a non-ZA IP is rejected
             # (HTTP 401 InvalidUserNameOrPassword — the exact failure seen with the hardcoded India
             # IP below). Override these with values captured from a real logged-in session for the
             # target region:
-            #   MELON_UIP                    — the client IP the site reports (must match the region)
-            #   MELON_SESSION_TRACKING_TOKEN — the sessionMetadata.sessionTrackingToken
+            #   GAMEGUARD_UIP                    — the client IP the site reports (must match the region)
+            #   GAMEGUARD_SESSION_TRACKING_TOKEN — the sessionMetadata.sessionTrackingToken
             # IMPORTANT: if Betway validates the TRUE connecting IP (not just this field), the run
             # must ALSO egress from a same-region IP (VPN/proxy) — a payload override alone won't do it.
             payload = {
@@ -56,10 +56,10 @@ class AuthHandler:
                 "countryCode": cfg["country_code"],
                 "sessionMetadata": {
                     "sessionTrackingToken": os.environ.get(
-                        "MELON_SESSION_TRACKING_TOKEN", secrets.token_hex(20).upper()),
+                        "GAMEGUARD_SESSION_TRACKING_TOKEN", secrets.token_hex(20).upper()),
                     "appType": "",
                     "appsFlyerExternalRef": "",
-                    "uip": os.environ.get("MELON_UIP", "115.110.105.36"),
+                    "uip": os.environ.get("GAMEGUARD_UIP", "115.110.105.36"),
                 }
             }
             logger.debug("Auth payload for %s/%s %s: %s", brand, region, username,

@@ -131,7 +131,7 @@ For a single box that visually contains a *row/grid/slider* of values:
 | `find_control(controls, *keywords) -> dict \| None` | First control whose label contains any keyword. |
 | `_extract_path(url) -> str` / `_is_noise(url) -> bool` | URL path / noise filter via `NOISE_PATTERNS`. |
 | `class TestResult(name, screenshot="")` | Fields: `passed`, `details`, `screenshot`, `video`, `video_start/end`. |
-| `async draw_highlight(page, xmin, ymin, xmax, ymax, text, color="lime")` | Injects a labeled `<div.melon-highlight>` overlay. |
+| `async draw_highlight(page, xmin, ymin, xmax, ymax, text, color="lime")` | Injects a labeled `<div.gameguard-highlight>` overlay. |
 | `async highlight_controls(page, controls, duration=3.0)` | Boxes every detected control (Pipeline A). |
 | `async flash_target(page, center, label, color="cyan", hold=0.7, radius=46)` | Briefly boxes a point about to be clicked. |
 | `async clear_highlights(page)` | Removes overlays. |

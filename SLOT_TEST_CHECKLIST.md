@@ -1,12 +1,12 @@
-# Melon — Slot QA Checklist
+# GameGuard — Slot QA Checklist
 
 The master QA list covers all casino verticals. This is the **slot-only** scope: which master
-checks apply to slots, which are out of scope, plus the extra checks Melon already automates.
+checks apply to slots, which are out of scope, plus the extra checks GameGuard already automates.
 Disconnection/abandon is **deferred** (network-kill is hard to drive reliably right now).
 
 ## In scope — slot checks
 
-| # | Check | What it verifies | Melon status |
+| # | Check | What it verifies | GameGuard status |
 |---|-------|------------------|--------------|
 | 1 | **Game Launch** | Game loads in the iFrame (Web; Android/iOS via `--mobile`) | ✅ startup loop (`auto_handle_startup`) |
 | 2 | **Default Bet Amount** | Default stake after launch matches expected | ✅ `--default-bet` check |
@@ -34,7 +34,7 @@ Disconnection/abandon is **deferred** (network-kill is hard to drive reliably ri
 ## Deferred
 - **Abandon / Disconnection** — continue a round after leaving the page or killing the network during buy-feature/free-spins. Hard to drive reliably; revisit next iteration.
 
-## Extra checks Melon already does (beyond the master list)
+## Extra checks GameGuard already does (beyond the master list)
 - **Detect ALL UI controls** — vision inventory of every interactive control (the annotated hero shot in the report).
 - **Spin button behaviour** — fires a real spin, disabled during spin, re-enables after (network + motion truth).
 - **Turbo / fast-spin** — control detected/operated.

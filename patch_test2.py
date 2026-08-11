@@ -33,7 +33,7 @@ async def draw_highlight(page, xmin, ymin, xmax, ymax, text, color="lime"):
     try:
         await page.evaluate('''([x, y, w, h, text, color]) => {
             const el = document.createElement('div');
-            el.className = 'melon-highlight';
+            el.className = 'gameguard-highlight';
             el.style.position = 'absolute';
             el.style.left = x + 'px';
             el.style.top = y + 'px';
@@ -64,7 +64,7 @@ async def draw_highlight(page, xmin, ymin, xmax, ymax, text, color="lime"):
 async def clear_highlights(page):
     try:
         await page.evaluate('''() => {
-            const els = document.querySelectorAll('.melon-highlight');
+            const els = document.querySelectorAll('.gameguard-highlight');
             els.forEach(el => el.remove());
         }''')
     except Exception:

@@ -10,7 +10,7 @@ missing_html = """
   <!-- ═══ LEFT — ARENA ═══ -->
   <div class="arena" id="arena">
 
-    <div class="arena-title" id="arenaTitle">Melon</div>
+    <div class="arena-title" id="arenaTitle">GameGuard</div>
 
     <!-- Actual Slot Machine -->
     <div class="slot-frame" id="slotFrame">
