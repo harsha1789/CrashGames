@@ -131,11 +131,10 @@ def _pump_worker(proc, label, q, drop_payload):
     proc.wait()
 
 
-def _watch_workers(workers, q, batch):
-    """Waits for every worker, then closes the stream (and, for batches, appends a
-    result summary read back from the shared report)."""
-    for w in workers:
-        w["proc"].wait()
+def _finish_batch(q, batch):
+    """Shared batch-completion tail (report summary + sweep DB recording), used once every
+    worker has finished — by both the immediate-launch path and the throttled scheduler
+    below, so the two launch styles report exactly the same way."""
     if batch and batch.get("report") and os.path.exists(batch["report"]):
         try:
             _log_put(q, "[BATCH] " + _report_summary(batch["report"]))
@@ -146,6 +145,14 @@ def _watch_workers(workers, q, batch):
     # (unless the run was flagged do-not-record). Match picks to their result rows by name.
     if batch and batch.get("sweep"):
         _record_sweep(batch["sweep"], batch.get("report"), q)
+
+
+def _watch_workers(workers, q, batch):
+    """Waits for every worker, then closes the stream (and, for batches, appends a
+    result summary read back from the shared report)."""
+    for w in workers:
+        w["proc"].wait()
+    _finish_batch(q, batch)
     RUN_DONE["v"] = True
     q.put(None)
 
@@ -219,28 +226,75 @@ def _report_summary(report_path):
     return "Summary: " + " · ".join(parts)
 
 
-def _start_workers(cmds, batch=None):
-    """Spawn one subprocess per (label, cmd[, env]), wire reader threads into a fresh queue."""
+def _start_workers(cmds, batch=None, max_parallel=None):
+    """Spawn one subprocess per (label, cmd[, env]), wire reader threads into a fresh queue.
+    max_parallel=None (default): launch every worker immediately — unchanged behavior, used by
+    the single-game launch (always 1 worker) and anywhere a small, fixed worker count is fine.
+    Pass max_parallel to cap how many run at once; the rest queue and start as slots free, the
+    same wave-scheduling _start_fleet already uses for the auto-sweep — added so a manual batch
+    launch with many worker accounts (e.g. 34) doesn't open that many real browsers at the same
+    instant (CPU/RAM contention, plus every worker's Gemini vision calls colliding on the single
+    shared API key at once)."""
     global WORKERS, LOG_Q
     _stop_workers()
+    FLEET_STOP.clear()
     LOG_Q = queue.Queue()
     LOG_HISTORY.clear()
     RUN_DONE["v"] = False
     WORKERS = []
     drop_payload = batch is not None
-    for item in cmds:
-        label, cmd = item[0], item[1]
-        env = item[2] if len(item) > 2 else None
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace", bufsize=1, cwd=BASE_DIR,
-            env=env
-        )
-        WORKERS.append({"proc": proc, "label": label})
-        threading.Thread(target=_pump_worker, args=(proc, label, LOG_Q, drop_payload),
+    q = LOG_Q
+
+    if not max_parallel or max_parallel >= len(cmds):
+        for item in cmds:
+            label, cmd = item[0], item[1]
+            env = item[2] if len(item) > 2 else None
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace", bufsize=1, cwd=BASE_DIR,
+                env=env
+            )
+            WORKERS.append({"proc": proc, "label": label})
+            threading.Thread(target=_pump_worker, args=(proc, label, LOG_Q, drop_payload),
+                             daemon=True).start()
+        threading.Thread(target=_watch_workers, args=(list(WORKERS), LOG_Q, batch),
                          daemon=True).start()
-    threading.Thread(target=_watch_workers, args=(list(WORKERS), LOG_Q, batch),
-                     daemon=True).start()
+        return
+
+    def scheduler():
+        pending = list(cmds)
+        running = []   # {"proc", "thread", "finished_at": float|None}
+        while (pending or running) and not FLEET_STOP.is_set():
+            occupied = sum(1 for r in running if r["finished_at"] is None)
+            while pending and occupied < max_parallel and not FLEET_STOP.is_set():
+                item = pending.pop(0)
+                label, cmd = item[0], item[1]
+                env = item[2] if len(item) > 2 else None
+                try:
+                    proc = subprocess.Popen(
+                        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, encoding="utf-8", errors="replace", bufsize=1,
+                        cwd=BASE_DIR, env=env)
+                except Exception as e:
+                    _log_put(q, f"[BATCH] worker {label} failed to start: {e}")
+                    continue
+                WORKERS.append({"proc": proc, "label": label})
+                th = threading.Thread(target=_pump_worker, args=(proc, label, q, drop_payload),
+                                      daemon=True)
+                th.start()
+                running.append({"proc": proc, "thread": th, "finished_at": None, "label": label})
+                occupied += 1
+            time.sleep(0.5)
+            for r in running:
+                if r["finished_at"] is None and r["proc"].poll() is not None:
+                    r["thread"].join(timeout=5)
+                    r["finished_at"] = time.time()
+            running = [r for r in running if r["finished_at"] is None]
+        _finish_batch(q, batch)
+        RUN_DONE["v"] = True
+        q.put(None)
+
+    threading.Thread(target=scheduler, daemon=True).start()
 
 
 FLEET_STOP = threading.Event()   # set by /stop so a capped fleet stops launching queued waves
@@ -427,7 +481,8 @@ def _run_due_schedules():
                 result, status = _do_launch_batch(
                     payload.get("input_path"), payload.get("brand", "betway"),
                     payload.get("region", "ZA"), payload.get("accounts") or [],
-                    bool(payload.get("headless")), payload.get("tests") or ["dsc"])
+                    bool(payload.get("headless")), payload.get("tests") or ["dsc"],
+                    parallel=payload.get("parallel"))
             elif job.get("type") == "crash":
                 result, status = _do_launch_crash_sweep(
                     payload.get("picks"), payload.get("username", ""), payload.get("password", ""),
@@ -831,9 +886,13 @@ def _crash_report_rows(run_id):
     result named "Crash game session is live" instead of the normal TEST 1-4 battery; handled
     explicitly below so its own specific reason surfaces instead of falling through to a vague
     generic message.
-    Bet Placed / Tlogs: always "NA" here — /launch-crash-sweep is dry-run only by design (see
-    its docstring), so no wager is ever placed to report a Bet Placed/Tlogs verdict for. This is
-    NOT the same claim as "Skipped (non-slot)" — the game WAS tested, just never wagered on.
+    Bet Placed: read from crash_auto.py's own "Place bet during betting window = 1 place-bet
+    request" result — under --live this actually places the wager and passed=True/False reports
+    whether it went through; under dry-run (or when the run aborted before reaching that test)
+    it's recorded with passed=None, which maps to "NA" here. (Fixed 2026-08-11 — this used to
+    hardcode "NA" and label every launched game "Dry-run only — no wagers placed" unconditionally,
+    a leftover from before /launch-crash-sweep supported --live; that made every live crash sweep's
+    report claim no money was wagered even when it genuinely was.)
     """
     batch_dir = os.path.join(RUNS_DIR, run_id)
     rows = []
@@ -856,18 +915,39 @@ def _crash_report_rows(run_id):
                 data = json.load(f)
             results = {r.get("name"): r for r in data.get("results", [])}
             abort = results.get("Crash game session is live")
+            bet_test = results.get("Place bet during betting window = 1 place-bet request")
             if abort is not None:
                 launched = bool(abort.get("passed"))
                 remark = abort.get("details") or "Session did not stay live long enough to test"
+                bet_placed = "NA"
             else:
                 t1 = results.get("Crash UI controls detected", {})
                 launched = bool(t1.get("passed"))
-                remark = "Dry-run only — no wagers placed" if launched else \
-                    (t1.get("details") or "Controls not detected")
+                if bet_test is None or bet_test.get("passed") is None:
+                    bet_placed = "NA"
+                    remark = (bet_test.get("details") if bet_test else None) or \
+                        ("Dry-run — no wager attempted" if launched else
+                         (t1.get("details") or "Controls not detected"))
+                else:
+                    bet_placed = "Pass" if bet_test.get("passed") else "Fail"
+                    remark = bet_test.get("details") or \
+                        ("Wager placed" if bet_placed == "Pass" else "Wager attempt failed")
+                    # Cross-check against the balance-delta test (2026-08-11): the bet-request
+                    # test can false-negative when a provider's real wager confirmation travels
+                    # over a WS frame the network monitor classifies as idle (confirmed live
+                    # against "Trader" — bet test said Fail/requests=0, but balance genuinely
+                    # dropped by the stake amount). A non-zero balance delta is stronger evidence
+                    # of a real wager than the request-count heuristic, so it overrides here.
+                    if bet_placed != "Pass":
+                        bal_test = results.get("Balance updates correctly (-bet, +payout on cash out)")
+                        m = re.search(r"delta\s+([+-]?\d+\.?\d*)", (bal_test or {}).get("details") or "")
+                        if m and abs(float(m.group(1))) > 0.001:
+                            bet_placed = "Pass"
+                            remark = f"Wager confirmed via balance drop (bet-request test missed it): {bal_test['details']}"
             rows.append({"Sr. No.": i, "Provider": pick.get("provider") or "",
                         "Game Name": name, "Game Type": "Crash Games",
                         "Launch": "Pass" if launched else "Fail",
-                        "Bet Placed": "NA", "Tlogs": "NA", "Remark": remark,
+                        "Bet Placed": bet_placed, "Tlogs": "NA", "Remark": remark,
                         "Evidence": f"{run_id}/{folder}"})
         except Exception as e:
             rows.append({"Sr. No.": i, "Provider": pick.get("provider") or "", "Game Name": name,
@@ -1159,19 +1239,31 @@ def launch():
     return jsonify({"status": "started"})
 
 
-def _do_launch_batch(input_path, brand, region, accounts, headless, tests):
+def _do_launch_batch(input_path, brand, region, accounts, headless, tests, parallel=None):
     """Core of a slot batch launch: shard `input_path` across `accounts`, seed a shared DSC
     report, spawn one worker per shard, register the run. Factored out of the /launch-batch
     route (2026-08-10) so the scheduler can trigger the EXACT same launch a manual click does
     — same validation, same worker commands — just called with a stored payload instead of a
     fresh request. `input_path` must already point at a saved .xlsx (the route saves the
     upload before calling this; the scheduler points at its persisted per-job copy).
+
+    `parallel` caps how many of the (up to one-per-account) workers run at once — worker
+    accounts still queue and start in waves as slots free (see _start_workers), instead of
+    every browser opening at the same instant. Default/None -> 4, same default+[1,8] clamp the
+    auto-sweep fleet already uses; a big batch (e.g. 30+ accounts) opening that many real
+    Chromium instances simultaneously starves CPU/RAM AND floods the single shared Gemini
+    vision API key with concurrent calls, so the cap applies even when the caller passes nothing.
+
     Returns (payload_dict, http_status) — same shape the route used to jsonify directly."""
     global CURRENT_RUN
     accounts = [a for a in (accounts or []) if a.get("username") and a.get("password")]
     if not accounts:
         return {"status": "error", "message": "Select at least one worker account"}, 400
     tests = tests or ["dsc"]
+    try:
+        parallel = max(1, min(int(parallel or 4), 8))
+    except (TypeError, ValueError):
+        parallel = 4
 
     started = datetime.now()
     batch_id = f"{started:%Y%m%d_%H%M%S}_DSC"
@@ -1208,11 +1300,16 @@ def _do_launch_batch(input_path, brand, region, accounts, headless, tests):
             cmd.extend(["--dsc-report", report])
         # Cascade the worker windows (~36px steps) so every title bar stays clickable —
         # users resize/snap stacked windows to see them, and a RESIZE breaks coordinates.
+        # Stepped modulo `parallel` (mirrors the auto-sweep fleet) since only `parallel`
+        # workers are ever actually on screen at once now — without the modulo a big batch
+        # would cascade windows off the bottom of the screen for waves that never overlap.
         env = os.environ.copy()
-        env["GAMEGUARD_WINDOW_POS"] = f"{36 * (k - 1)},{36 * (k - 1)}"
+        step = 36 * ((k - 1) % parallel)
+        env["GAMEGUARD_WINDOW_POS"] = f"{step},{step}"
         cmds.append((f"W{k}", cmd, env))
 
-    batch = {"report": report, "total": total, "workers": len(cmds), "run_id": batch_id}
+    batch = {"report": report, "total": total, "workers": len(cmds), "run_id": batch_id,
+             "parallel": parallel}
     CURRENT_RUN = {"game": f"Batch · {total} games", "run_id": batch_id,
                    "start_time": started.isoformat(), "status": "running", "batch": batch}
     try:
@@ -1230,9 +1327,9 @@ def _do_launch_batch(input_path, brand, region, accounts, headless, tests):
     except Exception as e:
         print(f"[runs] index write failed: {e}")
 
-    _start_workers(cmds, batch=batch)
+    _start_workers(cmds, batch=batch, max_parallel=parallel)
 
-    return {"status": "started", "total": total, "workers": len(cmds),
+    return {"status": "started", "total": total, "workers": len(cmds), "parallel": parallel,
             "run_id": batch_id, "report": os.path.basename(report) if report else None}, 200
 
 
@@ -1242,8 +1339,10 @@ def launch_batch():
     worker per selected account. All workers fill ONE shared report (file-locked) seeded
     from the input sheet, so row order is preserved and a partial sweep is readable.
     Multipart form: excel (file), brand, region, accounts (JSON [{username,password}]),
-    tests (JSON list, default ["dsc"]). Thin wrapper around _do_launch_batch — this route's
-    only job is turning the multipart upload into a saved input_path."""
+    tests (JSON list, default ["dsc"]), parallel (optional int, default 4, clamped [1,8] —
+    how many worker browsers run at once; the rest queue). Thin wrapper around
+    _do_launch_batch — this route's only job is turning the multipart upload into a saved
+    input_path."""
     f = request.files.get('excel')
     if not f:
         return jsonify({"status": "error", "message": "No Excel file uploaded"}), 400
@@ -1262,6 +1361,10 @@ def launch_batch():
         tests = json.loads(request.form.get('tests') or '["dsc"]') or ["dsc"]
     except ValueError:
         tests = ["dsc"]
+    try:
+        parallel = int(request.form.get('parallel')) if request.form.get('parallel') else None
+    except ValueError:
+        parallel = None
 
     fname = (f.filename or "").lower()
     if fname.endswith(".xls") and not fname.endswith(".xlsx"):
@@ -1286,7 +1389,8 @@ def launch_batch():
     else:
         f.save(input_path)
 
-    payload, status = _do_launch_batch(input_path, brand, region, accounts, is_headless, tests)
+    payload, status = _do_launch_batch(input_path, brand, region, accounts, is_headless, tests,
+                                       parallel=parallel)
     return jsonify(payload), status
 
 

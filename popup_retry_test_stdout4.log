@@ -1,0 +1,19 @@
+
+======================================================================
+  CRASH GAME RESOLVER
+======================================================================
+Brand: betway | Region: ZA
+Authenticating (user: 27830099887)...
+✅ Authenticated.
+
+✅ Found: Aviator (id=1322, type=Crash Games, provider=Spribe)
+🔗 Launch URL: https://launch.spribegaming.com/aviator?user=0784dea3-7d00-ef11-814d-00155da6086...
+
+[!] LIVE MODE: wager-dependent tests will place REAL bets.
+
+
+======================================================================
+  CRASH GAME UI TEST SUITE  (LIVE — REAL WAGERS)
+======================================================================
+URL: https://launch.spribegaming.com/aviator?user=0784dea3-7d00-ef11-814d-00155da6086...
+

@@ -9,9 +9,17 @@ brand/region-generic:
   • provider games: GET {base}/api/v3/Gaming/Provider/Games/?provider=... -> {"data": [...]}
 regionCode/currency come from region_config (J-prefixed for JPC). x-brand-id is sent when the
 region needs it (JPC). Calls go through curl_cffi so the WAF doesn't challenge them.
+
+list_crash_games() below has a fallback: the curated "crashgames" Categories bucket (recon
+2026-07-27) only comes back populated for Betway ZA — every other brand/region we've checked
+returns 0 categories from that same endpoint even though crash titles are demonstrably live
+there (GameHandler.search_game finds Aviator/JetX/Spaceman/Crash everywhere). Rather than wait
+on that curation being fixed upstream, list_crash_games() falls back to walking every provider
+(get_providers + list_provider_games) and classifying crash titles itself when the bucket is empty.
 """
 import re
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
     from curl_cffi import requests as _http
@@ -57,22 +65,74 @@ def get_providers(brand, region, token):
 
 
 def list_crash_games(brand, region, token):
-    """Every crash title for this (brand, region) — one call, not one-per-provider like the
-    slot sweep needs (recon 2026-07-27: the Categories payload already carries a curated
-    'crashgames' bucket with the full game list, id/name/provider/minBetAmount included, so
-    there's no need to walk all ~47 providers the way pick_game() does for slots).
-    Returns [{"id","name","provider","minBetAmount"}], unavailable titles dropped."""
+    """Every crash title for this (brand, region). Fast path: the Categories payload's curated
+    'crashgames' bucket (id/name/provider/minBetAmount included) — one call, no provider walk.
+    That bucket is currently only populated for Betway ZA (recon 2026-07-27), so when it's
+    empty/missing we fall back to walking every provider and classifying crash titles ourselves
+    (see module docstring for why). Returns [{"id","name","provider","minBetAmount"}],
+    unavailable titles dropped."""
     cats = _categories_payload(brand, region, token).get("categories") or []
     bucket = next((c for c in cats if (c.get("name") or "").lower() == "crashgames"), None)
-    if not bucket:
+    if bucket:
+        out = []
+        for g in bucket.get("games") or []:
+            if g.get("unavailable"):
+                continue
+            out.append({"id": g.get("id"), "name": g.get("name"),
+                        "provider": g.get("provider"), "minBetAmount": g.get("minBetAmount")})
+        if out:
+            return out
+    return _crash_games_via_provider_walk(brand, region, token)
+
+
+def _game_provider_and_type(g):
+    """Best-effort provider/type extraction, mirroring GameHandler.search_game()'s field
+    checks so the two crash-classification paths (search vs. catalog walk) agree."""
+    provider = next((g.get(k) for k in
+                     ("provider", "providerName", "providerTitle", "vendor", "studio")
+                     if g.get(k)), None)
+    game_type = next((g.get(k) for k in
+                      ("gameType", "category", "categoryName", "categories", "type",
+                       "genre", "subVertical")
+                      if g.get(k)), None)
+    if isinstance(game_type, (list, tuple)):
+        game_type = ", ".join(str(x) for x in game_type)
+    return provider, game_type
+
+
+def _is_crash_game(g):
+    """Conservative crash check for the provider-walk fallback: unlike _is_slot()'s permissive
+    default, a game with NO type-ish field at all is NOT treated as crash — these results drive
+    real wagers, so a false positive is worse than a missed title."""
+    _, game_type = _game_provider_and_type(g)
+    return bool(game_type) and "crash" in str(game_type).lower()
+
+
+def _crash_games_via_provider_walk(brand, region, token, max_workers=8):
+    """Fallback used by list_crash_games() when the curated 'crashgames' Categories bucket is
+    empty for this (brand, region). Walks every provider concurrently (list_provider_games is a
+    plain synchronous HTTP call, and there can be 40+ providers) and keeps only games that look
+    like crash titles. De-duplicated by game id."""
+    providers = get_providers(brand, region, token)
+    if not providers:
         return []
-    out = []
-    for g in bucket.get("games") or []:
-        if g.get("unavailable"):
-            continue
-        out.append({"id": g.get("id"), "name": g.get("name"),
-                    "provider": g.get("provider"), "minBetAmount": g.get("minBetAmount")})
-    return out
+    found = {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(providers))) as pool:
+        futures = {pool.submit(list_provider_games, brand, region, token, p): p for p in providers}
+        for fut in as_completed(futures):
+            provider = futures[fut]
+            try:
+                games = fut.result()
+            except Exception:
+                continue
+            for g in games:
+                if g.get("unavailable") or g.get("id") is None or not _is_crash_game(g):
+                    continue
+                provider_name, _ = _game_provider_and_type(g)
+                found.setdefault(g["id"], {"id": g.get("id"), "name": g.get("name"),
+                                           "provider": provider_name or provider,
+                                           "minBetAmount": g.get("minBetAmount")})
+    return list(found.values())
 
 
 def list_provider_games(brand, region, token, provider, limit=1000):

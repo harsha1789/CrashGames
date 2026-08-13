@@ -135,6 +135,18 @@ Return a JSON array of objects with:
             controls.append(item)
         elif item.get("label"):
             controls.append(item)
+    # Disambiguate same-label repeats (a second bet panel duplicates the input/+/-/auto-cashout
+    # controls under identical labels — the prompt only special-cases the Bet Button itself,
+    # label 13). Same "(panel N)" convention as detect_crash_controls_dom() (line ~185) so a
+    # panel-2 control is never silently indistinguishable by name from panel-1's.
+    seen_counts = {}
+    for c in controls:
+        label = c.get("label")
+        if not label:
+            continue
+        seen_counts[label] = seen_counts.get(label, 0) + 1
+        if seen_counts[label] > 1:
+            c["label"] = f"{label} (panel {seen_counts[label]})"
     return controls
 
 
@@ -584,20 +596,51 @@ async def place_bet(page, controls, monitor, stake, ss_dir, tag="bet"):
     bet_input = T.find_control(controls, "bet amount input", "bet input")
 
     await page.screenshot(path=sp("pre")); rep["shots"]["pre"] = sp("pre")
-    if bet_input and stake is not None:
-        try:
-            await page.mouse.click(*bet_input["center"])
-            await page.keyboard.press("Control+A")
-            await page.keyboard.type(f"{stake:g}")
-        except Exception as e:
-            print(f"    [BET] stake-input warning: {e}")
 
-    idx = monitor.req_count()
-    t0 = time.time()
-    await page.mouse.click(*bet_btn["center"])
+    async def _set_stake():
+        if bet_input and stake is not None:
+            try:
+                await page.mouse.click(*bet_input["center"])
+                await page.keyboard.press("Control+A")
+                await page.keyboard.type(f"{stake:g}")
+            except Exception as e:
+                print(f"    [BET] stake-input warning: {e}")
+
+    async def _click_bet():
+        idx = monitor.req_count()
+        t0 = time.time()
+        await page.mouse.click(*bet_btn["center"])
+        req = await _await_request(monitor, idx)
+        await asyncio.sleep(1.2)   # let any duplicate/delayed request land before counting
+        return idx, t0, req
+
+    await _set_stake()
+    idx, t0, req = await _click_bet()
     rep["clicked"] = True
-    req = await _await_request(monitor, idx)
-    await asyncio.sleep(1.2)   # let any duplicate/delayed request land before counting
+
+    if not req:
+        # No bet request followed the click — often because a popup/overlay (bonus offer,
+        # consent banner, disconnect prompt) intercepted the click instead of the real Bet
+        # button underneath. Reuse the same GATE vision-check auto_handle_crash_startup()
+        # uses to dismiss startup overlays, then retry the bet once before giving up.
+        gate_shot = sp("popup_check")
+        await page.screenshot(path=gate_shot)
+        state = read_round_state(Image.open(gate_shot))
+        if (state.get("phase") or "").upper() == "GATE":
+            target = state.get("gate_target")
+            w, h = config_env.VIEWPORT_WIDTH, config_env.VIEWPORT_HEIGHT
+            x, y = _center(target) if target else (w // 2, h // 2)
+            print(f"    [BET] no request after click — popup detected, dismissing at "
+                  f"({x:.0f},{y:.0f}) and retrying...")
+            try:
+                await page.mouse.click(x, y)
+            except Exception as e:
+                print(f"    [BET] popup-dismiss warning: {e}")
+            await asyncio.sleep(1.5)
+            rep["popup_retry"] = True
+            await _set_stake()
+            idx, t0, req = await _click_bet()
+
     if req:
         rep["path"] = req["path"]
         rep["request_count"] = _count_requests(monitor, req["path"], idx)

@@ -1,0 +1,31 @@
+Traceback (most recent call last):
+  File "C:\Users\HT67091\Downloads\Canvas-Game-Automation-dsc-auto-sweep_Crush\Canvas-Game-Automation-dsc-auto-sweep\crash_auto.py", line 1545, in <module>
+    asyncio.run(run_crash_tests_with_retry(
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\HT67091\Downloads\Canvas-Game-Automation-dsc-auto-sweep_Crush\Canvas-Game-Automation-dsc-auto-sweep\crash_auto.py", line 1451, in run_crash_tests_with_retry
+    results = await run_crash_tests(url, **kwargs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\HT67091\Downloads\Canvas-Game-Automation-dsc-auto-sweep_Crush\Canvas-Game-Automation-dsc-auto-sweep\crash_auto.py", line 827, in run_crash_tests
+    browser = await p.chromium.launch(
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\site-packages\playwright\async_api\_generated.py", line 16307, in launch
+    await self._impl_obj.launch(
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\site-packages\playwright\_impl\_browser_type.py", line 98, in launch
+    await self._channel.send(
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\HT67091\AppData\Local\Programs\Python\Python312\Lib\site-packages\playwright\_impl\_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.Error: BrowserType.launch: spawn UNKNOWN
+Call log:
+  - <launching> C:\Users\HT67091\AppData\Local\ms-playwright\chromium_headless_shell-1223\chrome-headless-shell-win64\chrome-headless-shell.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --window-size=1920,1080 --window-position=0,0 --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling --user-data-dir=C:\Users\HT67091\AppData\Local\Temp\playwright_chromiumdev_profile-MSiILp --remote-debugging-pipe --no-startup-window
+

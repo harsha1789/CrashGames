@@ -1,0 +1,50 @@
+
+======================================================================
+  CRASH GAME RESOLVER
+======================================================================
+Brand: betway | Region: ZA
+Authenticating (user: 27830099887)...
+✅ Authenticated.
+
+✅ Found: Aviator (id=1322, type=Crash Games, provider=Spribe)
+🔗 Launch URL: https://launch.spribegaming.com/aviator?user=0784dea3-7d00-ef11-814d-00155da6086...
+
+[!] LIVE MODE: wager-dependent tests will place REAL bets.
+
+
+======================================================================
+  CRASH GAME UI TEST SUITE  (LIVE — REAL WAGERS)
+======================================================================
+URL: https://launch.spribegaming.com/aviator?user=0784dea3-7d00-ef11-814d-00155da6086...
+
+[SETUP] Loading crash game...
+
+  [STARTUP] Waiting for crash game to load...
+    [1/25] phase=LOADING (still loading)...
+    [2/25] phase=LOADING (still loading)...
+    [3/25] DISCONNECTED screen detected — reloading (attempt 1/2)...
+    [4/25] phase=LOADING (still loading)...
+    [5/25] DISCONNECTED screen detected — reloading (attempt 2/2)...
+    [6/25] phase=LOADING (still loading)...
+    [7/25] DISCONNECTED screen detected — reloads exhausted, aborting startup.
+  [FAIL] Crash game session is live: DISCONNECTED screen shown — the launch token is spent/expired, or the session is held by another tab/browser. Supply a FRESH launch URL that has not been opened elsewhere (or mint a dedicated automation session).
+
+======================================================================
+  TEST RESULTS SUMMARY
+======================================================================
+  [FAIL] Crash game session is live: DISCONNECTED screen shown — the launch token is spent/expired, or the session is held by another tab/browser. Supply a FRESH launch URL that has not been opened elsewhere (or mint a dedicated automation session).
+
+  Total: 1 | Passed: 0 | Failed: 1 | Skipped: 0
+  1 TEST(S) FAILED
+======================================================================
+
+Results saved to C:\Users\HT67091\Downloads\Canvas-Game-Automation-dsc-auto-sweep_Crush\Canvas-Game-Automation-dsc-auto-sweep\test_results.json
+
+REPORTPAYLOAD===
+{"run_id": "", "summary": {"run_id": "", "total": 1, "passed": 0, "failed": 1, "skipped": 0, "started_at": "2026-08-12T14:13:04.042448", "duration_s": 106.9, "elements_shot": "", "video": "page@52646db9e3488029f817fce96875c01d.webm"}, "results": [{"name": "Crash game session is live", "passed": false, "details": "DISCONNECTED screen shown \u2014 the launch token is spent/expired, or the session is held by another tab/browser. Supply a FRESH launch URL that has not been opened elsewhere (or mint a dedicated automation session).", "screenshot": "crash_controls.png", "video": "page@52646db9e3488029f817fce96875c01d.webm", "video_start": 0.0, "video_end": 73.7, "actions": []}]}
+===REPORTPAYLOAD
+
+
+  [RETRY] attempt 1/1 — session dropped.
+
+  [RETRY] All 1 attempts exhausted — keeping the last attempt's result.
